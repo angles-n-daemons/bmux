@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"sort"
+	"sync"
 )
 
 // snapshot is one consistent view of the world: repos, worktrees, sessions,
@@ -34,25 +35,52 @@ type snapshot struct {
 }
 
 // gather builds a snapshot. It also upserts every live-session repo into the
-// persistent registry so repos never vanish from the tree.
-func gather(backend worktreeBackend) snapshot {
-	sessions, _ := listSessions()
+// persistent registry so repos never vanish from the tree. discoveredRoots
+// carries backend discovery (slow, e.g. roachdev) done once at startup
+// rather than on every refresh tick.
+func gather(discoveredRoots []string) snapshot {
+	var (
+		sessions []Session
+		allPanes []Pane
+		windows  map[string][]Window
+		current  string
+	)
+	parallel(
+		func() { sessions, _ = listSessions() },
+		func() { allPanes, _ = listAllPanes() },
+		func() { windows, _ = listAllWindows() },
+		func() { current = currentClientSession() },
+	)
+
 	reg := loadRegistry()
+
+	// Resolve each session's worktree toplevel concurrently.
+	tops := make([]string, len(sessions))
+	sessionRootsIdx := make([]string, len(sessions))
+	var fns []func()
+	for i := range sessions {
+		i := i
+		fns = append(fns, func() {
+			tops[i] = repoToplevel(sessions[i].Path)
+			if tops[i] != "" {
+				sessionRootsIdx[i] = repoMainRoot(tops[i])
+			}
+		})
+	}
+	parallel(fns...)
 
 	toplevels := map[string]string{} // session name -> worktree toplevel ("" = not a repo)
 	var sessionRoots []string
 	roots := map[string]bool{}
-	for _, s := range sessions {
-		top := repoToplevel(s.Path)
-		toplevels[s.Name] = top
-		if top != "" {
-			root := repoMainRoot(top)
+	for i, s := range sessions {
+		toplevels[s.Name] = tops[i]
+		if root := sessionRootsIdx[i]; root != "" {
 			roots[root] = true
 			sessionRoots = append(sessionRoots, root)
 		}
 	}
 	reg.upsert(sessionRoots)
-	for _, root := range backend.DiscoverRoots() {
+	for _, root := range discoveredRoots {
 		roots[root] = true
 	}
 	for _, root := range reg.Repos {
@@ -68,21 +96,37 @@ func gather(backend worktreeBackend) snapshot {
 		sort.Slice(ss, func(i, j int) bool { return ss[i].Name < ss[j].Name })
 	}
 
-	allPanes, _ := listAllPanes()
 	agents := detectAgents(allPanes)
-	windows, _ := listAllWindows()
 	panesBySession := map[string][]Pane{}
 	for _, p := range allPanes {
 		panesBySession[p.Session] = append(panesBySession[p.Session], p)
 	}
 
-	var groups []repoGroup
+	// List every repo's worktrees concurrently.
+	rootList := make([]string, 0, len(roots))
 	for root := range roots {
-		if repoToplevel(root) == "" {
-			continue // repo moved/deleted; keep in registry but don't render
+		rootList = append(rootList, root)
+	}
+	wtsByRoot := make([][]Worktree, len(rootList))
+	fns = fns[:0]
+	for i := range rootList {
+		i := i
+		fns = append(fns, func() {
+			if repoToplevel(rootList[i]) == "" {
+				return // repo moved/deleted; keep in registry but don't render
+			}
+			wtsByRoot[i] = repoWorktrees(rootList[i])
+		})
+	}
+	parallel(fns...)
+
+	var groups []repoGroup
+	for i, root := range rootList {
+		if len(wtsByRoot[i]) == 0 {
+			continue
 		}
 		g := repoGroup{Root: root, Name: filepath.Base(root)}
-		for _, wt := range repoWorktrees(root) {
+		for _, wt := range wtsByRoot[i] {
 			row := wtRow{WT: wt}
 			matched := byToplevel[wt.Path]
 			if len(matched) > 0 {
@@ -112,10 +156,24 @@ func gather(backend worktreeBackend) snapshot {
 		groups = append(groups, g)
 	}
 
-	return snapshot{
+	snap := snapshot{
 		Repos:          groups,
 		Windows:        windows,
 		Panes:          panesBySession,
-		CurrentSession: currentClientSession(),
+		CurrentSession: current,
 	}
+	saveSnapshotCache(snap)
+	return snap
+}
+
+func parallel(fns ...func()) {
+	var wg sync.WaitGroup
+	for _, fn := range fns {
+		wg.Add(1)
+		go func(f func()) {
+			defer wg.Done()
+			f()
+		}(fn)
+	}
+	wg.Wait()
 }

@@ -31,6 +31,7 @@ func isSpinner(r rune) bool { return strings.ContainsRune(brailleSpinners, r) }
 // running > waiting > stopped within each session.
 func detectAgents(panes []Pane) map[string][]agentStatus {
 	result := map[string][]agentStatus{}
+	var candidates []Pane
 	for _, p := range panes {
 		runes := []rune(p.Title)
 		if len(runes) < 2 || (runes[0] != '✳' && !isSpinner(runes[0])) || runes[1] != ' ' {
@@ -39,22 +40,35 @@ func detectAgents(panes []Pane) map[string][]agentStatus {
 		if shellCommands[p.Command] {
 			continue // agent exited, foreground reverted to a shell
 		}
-		status := agentStopped
-		if strings.ContainsAny(p.Title, brailleSpinners) {
-			status = agentRunning
-		} else {
-			content := capturePane(p.ID, 15)
-			for _, line := range strings.Split(content, "\n") {
+		candidates = append(candidates, p)
+	}
+
+	// capture-pane per idle agent is the slow part; run them concurrently.
+	statuses := make([]agentStatus, len(candidates))
+	var fns []func()
+	for i := range candidates {
+		i := i
+		fns = append(fns, func() {
+			p := candidates[i]
+			if strings.ContainsAny(p.Title, brailleSpinners) {
+				statuses[i] = agentRunning
+				return
+			}
+			statuses[i] = agentStopped
+			for _, line := range strings.Split(capturePane(p.ID, 15), "\n") {
 				if strings.Contains(line, "⏵⏵") {
 					continue // Claude Code statusline hints
 				}
 				if waitingPattern.MatchString(line) {
-					status = agentWaiting
-					break
+					statuses[i] = agentWaiting
+					return
 				}
 			}
-		}
-		result[p.Session] = append(result[p.Session], status)
+		})
+	}
+	parallel(fns...)
+	for i, p := range candidates {
+		result[p.Session] = append(result[p.Session], statuses[i])
 	}
 	for _, statuses := range result {
 		sortAgentStatuses(statuses)
