@@ -282,7 +282,7 @@ func (m model) enterRow() (tea.Model, tea.Cmd) {
 			if err := newSession(name, wt.Path); err != nil {
 				return actionDoneMsg{err: err}
 			}
-			if err := switchClient(name); err != nil {
+			if err := jumpTo(name, -1, -1); err != nil {
 				return actionDoneMsg{err: err}
 			}
 			return actionDoneMsg{notice: "session " + name + " started"}
@@ -299,17 +299,7 @@ func (m model) enterRow() (tea.Model, tea.Cmd) {
 
 func jumpCmd(session string, window, pane int) tea.Cmd {
 	return func() tea.Msg {
-		if window >= 0 {
-			if err := selectWindow(session, window); err != nil {
-				return actionDoneMsg{err: err}
-			}
-		}
-		if pane >= 0 {
-			if err := selectPane(session, window, pane); err != nil {
-				return actionDoneMsg{err: err}
-			}
-		}
-		if err := switchClient(session); err != nil {
+		if err := jumpTo(session, window, pane); err != nil {
 			return actionDoneMsg{err: err}
 		}
 		return actionDoneMsg{}
@@ -390,7 +380,7 @@ func (m model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if err := newSession(sess, path); err != nil {
 				return actionDoneMsg{err: err}
 			}
-			if err := switchClient(sess); err != nil {
+			if err := jumpTo(sess, -1, -1); err != nil {
 				return actionDoneMsg{err: err}
 			}
 			return actionDoneMsg{notice: "created " + filepath.Base(path)}

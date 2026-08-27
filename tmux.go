@@ -64,6 +64,26 @@ func tmuxRun(args ...string) error {
 	return err
 }
 
+// tmuxSeq runs several tmux commands in one client invocation (joined with
+// ";"), so tmux applies them back-to-back with a single redraw — this is
+// what makes panel-move-then-switch look atomic instead of choppy.
+func tmuxSeq(cmds ...[]string) error {
+	var args []string
+	for _, c := range cmds {
+		if len(c) == 0 {
+			continue
+		}
+		if len(args) > 0 {
+			args = append(args, ";")
+		}
+		args = append(args, c...)
+	}
+	if len(args) == 0 {
+		return nil
+	}
+	return tmuxRun(args...)
+}
+
 func insideTmux() bool { return os.Getenv("TMUX") != "" }
 
 func listSessions() ([]Session, error) {
@@ -158,14 +178,6 @@ func switchClient(session string) error {
 
 func killSession(name string) error {
 	return tmuxRun("kill-session", "-t", "="+name)
-}
-
-func selectWindow(session string, window int) error {
-	return tmuxRun("select-window", "-t", fmt.Sprintf("=%s:%d", session, window))
-}
-
-func selectPane(session string, window, pane int) error {
-	return tmuxRun("select-pane", "-t", fmt.Sprintf("=%s:%d.%d", session, window, pane))
 }
 
 // sanitizeSessionName strips characters tmux forbids in session names.

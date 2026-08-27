@@ -23,6 +23,11 @@ func main() {
 		fail(cmdToggle())
 	case "ensure":
 		fail(cmdEnsure())
+	case "go":
+		if len(args) < 2 || (args[1] != "prev" && args[1] != "next") {
+			fail(fmt.Errorf("usage: bmux go <prev|next>"))
+		}
+		fail(cmdGo(args[1]))
 	case "up":
 		fail(cmdUp())
 	default:
@@ -98,13 +103,21 @@ func unstylePane() {
 // panelWidth is a quarter of the window, at least 40 columns, at most 40%.
 // Override with `set -g @bmux_width 80` (columns) or `set -g @bmux_width 30%`.
 func panelWidth(target string) int {
-	args := []string{"display-message", "-p"}
-	if target != "" {
-		args = append(args, "-t", target)
+	// Prefer the client width: background windows keep a stale default size
+	// (80x24) until first displayed, which would skew the math.
+	winW := 0
+	if out, err := tmuxOut("list-clients", "-F", "#{client_width}"); err == nil {
+		winW, _ = strconv.Atoi(strings.SplitN(strings.TrimRight(out, "\n"), "\n", 2)[0])
 	}
-	args = append(args, "#{window_width}")
-	out, _ := tmuxOut(args...)
-	winW, _ := strconv.Atoi(strings.TrimSpace(out))
+	if winW <= 0 {
+		args := []string{"display-message", "-p"}
+		if target != "" {
+			args = append(args, "-t", target)
+		}
+		args = append(args, "#{window_width}")
+		out, _ := tmuxOut(args...)
+		winW, _ = strconv.Atoi(strings.TrimSpace(out))
+	}
 	if winW <= 0 {
 		winW = 160
 	}
@@ -140,19 +153,20 @@ func userOption(name, fallback string) string {
 // `bmux ensure`, which join-panes the live panel pane (TUI process and all)
 // into whatever window the client now shows.
 
-// findPanelPane returns the traveling panel's pane id, wherever it lives.
-func findPanelPane() string {
-	out, err := tmuxOut("list-panes", "-a", "-F", "#{pane_id}"+sep+"#{@bmux_panel}")
+// findPanelPane returns the traveling panel's pane id and the window
+// holding it, wherever it lives.
+func findPanelPane() (paneID, windowID string) {
+	out, err := tmuxOut("list-panes", "-a", "-F", "#{pane_id}"+sep+"#{window_id}"+sep+"#{@bmux_panel}")
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-		parts := strings.SplitN(line, sep, 2)
-		if len(parts) == 2 && parts[1] == "1" {
-			return parts[0]
+		parts := strings.SplitN(line, sep, 3)
+		if len(parts) == 3 && parts[2] == "1" {
+			return parts[0], parts[1]
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // cmdToggle flips the global panel: closes it wherever it is, or opens it
@@ -161,7 +175,7 @@ func cmdToggle() error {
 	if !insideTmux() {
 		return fmt.Errorf("toggle only works inside tmux")
 	}
-	if id := findPanelPane(); id != "" {
+	if id, _ := findPanelPane(); id != "" {
 		_ = tmuxRun("set-option", "-g", "@bmux_open", "0")
 		return tmuxRun("kill-pane", "-t", id)
 	}
@@ -216,23 +230,79 @@ func cmdEnsure() error {
 			return nil
 		}
 	}
-	if id := findPanelPane(); id != "" {
+	if id, cur := findPanelPane(); id != "" {
+		if cur == win {
+			return nil
+		}
 		return tmuxRun("join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(win)), "-s", id, "-t", win)
 	}
 	return spawnPanel(win, false)
 }
 
-// activeWindowID resolves the window the (first) attached client shows.
-func activeWindowID() string {
+// cmdGo switches to the previous/next window, moving the open panel into
+// the destination FIRST and issuing move+switch as one tmux sequence — the
+// reflow happens while the destination window is still invisible, so the
+// switch renders in a single clean frame (no halfway state).
+func cmdGo(dir string) error {
+	sess := clientSession()
+	if sess == "" {
+		return nil
+	}
+	out, err := tmuxOut("list-windows", "-t", "="+sess, "-F", "#{window_id}"+sep+"#{window_active}")
+	if err != nil {
+		return err
+	}
+	var wins []string
+	cur := -1
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		parts := strings.SplitN(line, sep, 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if parts[1] == "1" {
+			cur = len(wins)
+		}
+		wins = append(wins, parts[0])
+	}
+	if len(wins) < 2 || cur < 0 {
+		return nil
+	}
+	target := wins[(cur+1)%len(wins)]
+	if dir == "prev" {
+		target = wins[(cur-1+len(wins))%len(wins)]
+	}
+	var resize, join []string
+	if userOption("@bmux_open", "0") == "1" {
+		if id, win := findPanelPane(); id != "" && win != target {
+			// Size the (possibly never-displayed) destination to the client
+			// before joining, or the join width gets rescaled on switch.
+			resize = []string{"resize-window", "-A", "-t", target}
+			join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(target)), "-s", id, "-t", target}
+		}
+	}
+	return tmuxSeq(resize, join, []string{"select-window", "-t", target})
+}
+
+func clientSession() string {
 	out, err := tmuxOut("list-clients", "-F", "#{client_session}")
 	if err != nil {
 		return ""
 	}
-	sess := strings.SplitN(strings.TrimRight(out, "\n"), "\n", 2)[0]
+	return strings.SplitN(strings.TrimRight(out, "\n"), "\n", 2)[0]
+}
+
+// activeWindowID resolves the window the (first) attached client shows.
+func activeWindowID() string {
+	sess := clientSession()
 	if sess == "" {
 		return ""
 	}
-	out, err = tmuxOut("list-windows", "-t", "="+sess, "-F", "#{window_id}"+sep+"#{window_active}")
+	return activeWindowOf(sess)
+}
+
+// activeWindowOf returns the window id a session currently shows.
+func activeWindowOf(sess string) string {
+	out, err := tmuxOut("list-windows", "-t", "="+sess, "-F", "#{window_id}"+sep+"#{window_active}")
 	if err != nil {
 		return ""
 	}
@@ -243,6 +313,43 @@ func activeWindowID() string {
 		}
 	}
 	return ""
+}
+
+// jumpTo navigates to a session (and optionally window/pane). When run from
+// the traveling panel, the panel pane joins the destination window in the
+// same tmux command sequence as the switch, so the destination is fully
+// laid out before it becomes visible — one clean frame.
+func jumpTo(session string, window, pane int) error {
+	destWin := ""
+	if window >= 0 {
+		out, err := tmuxOut("display-message", "-p", "-t", fmt.Sprintf("=%s:%d", session, window), "#{window_id}")
+		if err != nil {
+			return err
+		}
+		destWin = strings.TrimSpace(out)
+	} else {
+		destWin = activeWindowOf(session)
+	}
+
+	var resize, join []string
+	if self := os.Getenv("TMUX_PANE"); self != "" && destWin != "" {
+		if out, _ := tmuxOut("show-options", "-pqv", "-t", self, "@bmux_panel"); strings.TrimSpace(out) == "1" {
+			ownWin, _ := tmuxOut("display-message", "-p", "-t", self, "#{window_id}")
+			if strings.TrimSpace(ownWin) != destWin {
+				resize = []string{"resize-window", "-A", "-t", destWin}
+				join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(destWin)), "-s", self, "-t", destWin}
+			}
+		}
+	}
+
+	var sel, selPane []string
+	if window >= 0 {
+		sel = []string{"select-window", "-t", destWin}
+		if pane >= 0 {
+			selPane = []string{"select-pane", "-t", fmt.Sprintf("=%s:%d.%d", session, window, pane)}
+		}
+	}
+	return tmuxSeq(resize, join, sel, selPane, []string{"switch-client", "-t", "=" + session})
 }
 
 // cmdUp boots the full environment: a detached session for every worktree of
