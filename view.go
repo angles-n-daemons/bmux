@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -171,15 +172,15 @@ func (m model) renderRow(r row, selected bool) string {
 }
 
 func (m model) View() string {
-	var b strings.Builder
-	b.WriteString(styleTitle.Render(truncate(" bmux", m.width)))
-	b.WriteString("\n")
+	w, h := m.width, m.height
+	if h < 4 {
+		h = 4
+	}
+	lines := make([]string, h)
+	lines[0] = styleTitle.Render(truncate(" bmux", w))
 
 	// keep the cursor inside the viewport
-	visible := m.height - 3 // title + footer + spare
-	if visible < 1 {
-		visible = 1
-	}
+	visible := h - 2 // title + footer
 	offset := m.offset
 	if m.cursor < offset {
 		offset = m.cursor
@@ -187,28 +188,80 @@ func (m model) View() string {
 	if m.cursor >= offset+visible {
 		offset = m.cursor - visible + 1
 	}
+	for i := 0; i < visible && offset+i < len(m.rows); i++ {
+		lines[1+i] = m.renderRow(m.rows[offset+i], offset+i == m.cursor && m.mode == modeNormal)
+	}
 
-	for i := offset; i < len(m.rows) && i < offset+visible; i++ {
-		b.WriteString(m.renderRow(m.rows[i], i == m.cursor && m.mode == modeNormal))
-		b.WriteString("\n")
+	footer := "⏎ jump  a new  d del  l/h fold  q quit"
+	if m.footer != "" {
+		footer = m.footer
 	}
-	for i := len(m.rows) - offset; i < visible; i++ {
-		b.WriteString("\n")
+	lines[h-1] = styleFooter.Render(truncate(footer, w))
+
+	out := strings.Join(lines, "\n")
+	if box := m.modalView(); box != "" {
+		out = overlayCenter(out, box, w, h)
 	}
+	return out
+}
+
+// modalView renders the centered pop-up for prompt/confirm/busy modes.
+func (m model) modalView() string {
+	boxW := m.width - 6
+	if boxW > 46 {
+		boxW = 46
+	}
+	if boxW < 20 {
+		boxW = 20
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Width(boxW)
 
 	switch m.mode {
 	case modePrompt:
-		b.WriteString(stylePrompt.Render(truncate("new worktree (empty=auto): "+m.input+"▎", m.width)))
+		return box.BorderForeground(lipgloss.Color("3")).Render(
+			stylePrompt.Render("new worktree") + "\n" +
+				m.input + "▎\n" +
+				styleFooter.Render("⏎ create · esc cancel · empty = auto"))
 	case modeConfirm:
-		b.WriteString(styleError.Render(truncate(m.confirmMsg+" [y/N]", m.width)))
+		return box.BorderForeground(lipgloss.Color("1")).Render(
+			m.confirmMsg + "\n" +
+				styleFooter.Render("y confirm · any other key cancels"))
 	case modeBusy:
-		b.WriteString(stylePrompt.Render(truncate(m.busyMsg, m.width)))
-	default:
-		if m.footer != "" {
-			b.WriteString(styleFooter.Render(truncate(m.footer, m.width)))
-		} else {
-			b.WriteString(styleFooter.Render(truncate("⏎ jump  a new  d del  l/h fold  q quit", m.width)))
-		}
+		return box.BorderForeground(lipgloss.Color("3")).Render(m.busyMsg)
 	}
-	return b.String()
+	return ""
+}
+
+// overlayCenter splices box over the middle of bg (both ANSI-styled),
+// neotree-popup style: the tree stays visible around the modal.
+func overlayCenter(bg, box string, w, h int) string {
+	bgLines := strings.Split(bg, "\n")
+	boxLines := strings.Split(box, "\n")
+	boxW := lipgloss.Width(box)
+	top := (h - len(boxLines)) / 2
+	if top < 0 {
+		top = 0
+	}
+	left := (w - boxW) / 2
+	if left < 0 {
+		left = 0
+	}
+	for i, bl := range boxLines {
+		r := top + i
+		if r < 0 || r >= len(bgLines) {
+			break
+		}
+		line := bgLines[r]
+		if lw := lipgloss.Width(line); lw < w {
+			line += strings.Repeat(" ", w-lw)
+		}
+		// Reset styling at both seams so the underlying row's colors don't
+		// bleed into the box or vice versa.
+		bgLines[r] = ansi.Truncate(line, left, "") + "\x1b[0m" + bl + "\x1b[0m" +
+			ansi.TruncateLeft(line, left+boxW, "")
+	}
+	return strings.Join(bgLines, "\n")
 }
