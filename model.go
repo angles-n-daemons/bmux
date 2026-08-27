@@ -587,22 +587,34 @@ func (m *model) rebuildRows() {
 	if m.pendingCursorKey != "" {
 		target = m.pendingCursorKey
 	}
-	m.cursor = 0
+	found := false
 	for i, r := range m.rows {
 		if r.Key == target {
 			m.cursor = i
 			m.pendingCursorKey = ""
+			found = true
 			break
 		}
 	}
 	// Restored row not present yet (e.g. cache predates it): fall back to
 	// wherever the cursor was, keep trying the persisted key on refreshes.
-	if m.pendingCursorKey != "" {
+	if !found && m.pendingCursorKey != "" {
 		for i, r := range m.rows {
 			if r.Key == curKey {
 				m.cursor = i
+				found = true
 				break
 			}
+		}
+	}
+	// Row gone entirely (deleted session/worktree): stay at the same index,
+	// which is the deleted row's visual neighbor — don't jump to the top.
+	if !found {
+		if m.cursor >= len(m.rows) {
+			m.cursor = len(m.rows) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
 		}
 	}
 }
