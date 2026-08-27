@@ -57,6 +57,7 @@ const (
 type (
 	tickMsg       struct{}
 	dataMsg       struct{ snap snapshot }
+	discoverMsg   struct{ roots []string }
 	actionDoneMsg struct {
 		err    error
 		notice string
@@ -65,10 +66,16 @@ type (
 
 type model struct {
 	backend worktreeBackend
-	snap    snapshot
-	rows    []row
-	cursor  int
-	offset  int
+	// roots found by backend discovery (slow); resolved once at startup.
+	discoveredRoots []string
+
+	snap   snapshot
+	rows   []row
+	cursor int
+	offset int
+	// pendingCursorKey is the persisted cursor row from the previous run,
+	// applied on rebuild until matched or the user moves the cursor.
+	pendingCursorKey string
 	// expanded overrides the default fold state (repos open, rest closed).
 	expanded map[string]bool
 
@@ -84,11 +91,32 @@ type model struct {
 }
 
 func newModel(backend worktreeBackend) model {
-	return model{backend: backend, expanded: map[string]bool{}, width: 34, height: 24}
+	m := model{backend: backend, expanded: map[string]bool{}, width: 34, height: 24}
+	if st, ok := loadUIState(); ok {
+		if st.Expanded != nil {
+			m.expanded = st.Expanded
+		}
+		m.pendingCursorKey = st.CursorKey
+	}
+	// Paint the previous run's tree immediately; the async refresh replaces it.
+	if snap, ok := loadSnapshotCache(); ok {
+		m.snap = snap
+		m.rebuildRows()
+	}
+	return m
+}
+
+// saveUI persists cursor + fold state; called on every mutation.
+func (m model) saveUI() {
+	key := m.pendingCursorKey
+	if r := m.cur(); r != nil {
+		key = r.Key
+	}
+	saveUIState(uiState{CursorKey: key, Expanded: m.expanded})
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.refreshCmd(), tickCmd())
+	return tea.Batch(m.refreshCmd(), m.discoverCmd(), tickCmd())
 }
 
 func tickCmd() tea.Cmd {
@@ -96,8 +124,13 @@ func tickCmd() tea.Cmd {
 }
 
 func (m model) refreshCmd() tea.Cmd {
+	roots := m.discoveredRoots
+	return func() tea.Msg { return dataMsg{snap: gather(roots)} }
+}
+
+func (m model) discoverCmd() tea.Cmd {
 	backend := m.backend
-	return func() tea.Msg { return dataMsg{snap: gather(backend)} }
+	return func() tea.Msg { return discoverMsg{roots: backend.DiscoverRoots()} }
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -114,6 +147,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.snap = msg.snap
 		m.rebuildRows()
 		return m, nil
+	case discoverMsg:
+		m.discoveredRoots = msg.roots
+		return m, m.refreshCmd()
 	case actionDoneMsg:
 		m.mode = modeNormal
 		if msg.err != nil {
@@ -175,7 +211,7 @@ func (m model) applyNormalKey(key string) (tea.Model, tea.Cmd) {
 	case "G":
 		m.cursor = len(m.rows) - 1
 	case "r":
-		return m, m.refreshCmd()
+		return m, tea.Batch(m.refreshCmd(), m.discoverCmd())
 	case "enter":
 		return m.enterRow()
 	case "l":
@@ -186,7 +222,12 @@ func (m model) applyNormalKey(key string) (tea.Model, tea.Cmd) {
 		return m.startCreate()
 	case "d":
 		return m.startDelete()
+	default:
+		return m, nil
 	}
+	// A movement key landed: the user owns the cursor now.
+	m.pendingCursorKey = ""
+	m.saveUI()
 	return m, nil
 }
 
@@ -229,6 +270,7 @@ func (m model) enterRow() (tea.Model, tea.Cmd) {
 	case rowRepo:
 		m.expanded[r.Key] = !m.isExpanded(*r)
 		m.rebuildRows()
+		m.saveUI()
 		return m, nil
 	case rowWorktree:
 		if r.WT.Session != nil {
@@ -282,6 +324,7 @@ func (m model) expandRow() (tea.Model, tea.Cmd) {
 	if !m.isExpanded(*r) {
 		m.expanded[r.Key] = true
 		m.rebuildRows()
+		m.saveUI()
 	}
 	return m, nil
 }
@@ -296,6 +339,7 @@ func (m model) collapseRow() (tea.Model, tea.Cmd) {
 	if r.expandable() && m.isExpanded(*r) {
 		m.expanded[r.Key] = false
 		m.rebuildRows()
+		m.saveUI()
 		return m, nil
 	}
 	for i := m.cursor - 1; i >= 0; i-- {
@@ -304,6 +348,8 @@ func (m model) collapseRow() (tea.Model, tea.Cmd) {
 			break
 		}
 	}
+	m.pendingCursorKey = ""
+	m.saveUI()
 	return m, nil
 }
 
@@ -537,11 +583,26 @@ func (m *model) rebuildRows() {
 		}
 	}
 
+	target := curKey
+	if m.pendingCursorKey != "" {
+		target = m.pendingCursorKey
+	}
 	m.cursor = 0
 	for i, r := range m.rows {
-		if r.Key == curKey {
+		if r.Key == target {
 			m.cursor = i
+			m.pendingCursorKey = ""
 			break
+		}
+	}
+	// Restored row not present yet (e.g. cache predates it): fall back to
+	// wherever the cursor was, keep trying the persisted key on refreshes.
+	if m.pendingCursorKey != "" {
+		for i, r := range m.rows {
+			if r.Key == curKey {
+				m.cursor = i
+				break
+			}
 		}
 	}
 }
