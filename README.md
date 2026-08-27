@@ -69,6 +69,27 @@ tmux() { if [ $# -eq 0 ]; then ~/go/bin/bmux up; else command tmux "$@"; fi }
 | `r` | refresh now (the tree also refreshes every 2s) |
 | `q` / `esc` | close |
 
+## Appearance
+
+The panel is chrome, and chrome recedes: it keeps the surrounding scheme's
+exact hues but desaturated and darkened, like an editor sidebar — so it
+tracks focus like any other pane while reading as navigation, not content.
+Defaults: `bg=#261724,fg=#9cc9ad` blurred, `bg=#152627,fg=#d4c39b` focused.
+Override live — no rebuild, takes effect next time the panel opens:
+
+```tmux
+set -g @bmux_window_style 'bg=#261724,fg=#9cc9ad'         # blurred
+set -g @bmux_window_active_style 'bg=#152627,fg=#d4c39b'  # focused
+```
+
+The panel opens at a quarter of the window width (at least 40 columns, at
+most 40%). Override with a column count or percentage:
+
+```tmux
+set -g @bmux_width 80    # columns
+set -g @bmux_width 30%   # of the window
+```
+
 ## Notes
 
 - Session ⇄ worktree matching is by path: a session belongs to a worktree
