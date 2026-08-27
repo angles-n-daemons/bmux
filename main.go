@@ -21,12 +21,15 @@ func main() {
 	switch args[0] {
 	case "toggle":
 		fail(cmdToggle())
+	case "ensure":
+		fail(cmdEnsure())
 	case "up":
 		fail(cmdUp())
 	default:
-		fmt.Fprintf(os.Stderr, "usage: bmux [toggle|up]\n\n"+
+		fmt.Fprintf(os.Stderr, "usage: bmux [toggle|ensure|up]\n\n"+
 			"  (none)  run the navigator TUI (inside tmux)\n"+
-			"  toggle  open/close the navigator as a left side panel\n"+
+			"  toggle  open/close the navigator panel (global, follows you)\n"+
+			"  ensure  hook target: move the panel into the current window\n"+
 			"  up      start sessions for all worktrees and attach to the tree\n")
 		os.Exit(2)
 	}
@@ -46,9 +49,15 @@ func runTUI() {
 	stylePane()
 	defer unstylePane()
 	p := tea.NewProgram(newModel(selectBackend()), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fail(err)
+	_, err := p.Run()
+	// Quitting the traveling panel with q closes it globally; otherwise the
+	// window-change hooks would resurrect it on the next switch.
+	if pane := os.Getenv("TMUX_PANE"); pane != "" {
+		if out, _ := tmuxOut("show-options", "-pqv", "-t", pane, "@bmux_panel"); strings.TrimSpace(out) == "1" {
+			_ = tmuxRun("set-option", "-g", "@bmux_open", "0")
+		}
 	}
+	fail(err)
 }
 
 // The panel is chrome, and chrome recedes: it uses the surrounding scheme's
@@ -88,8 +97,13 @@ func unstylePane() {
 
 // panelWidth is a quarter of the window, at least 40 columns, at most 40%.
 // Override with `set -g @bmux_width 80` (columns) or `set -g @bmux_width 30%`.
-func panelWidth() int {
-	out, _ := tmuxOut("display-message", "-p", "#{window_width}")
+func panelWidth(target string) int {
+	args := []string{"display-message", "-p"}
+	if target != "" {
+		args = append(args, "-t", target)
+	}
+	args = append(args, "#{window_width}")
+	out, _ := tmuxOut(args...)
 	winW, _ := strconv.Atoi(strings.TrimSpace(out))
 	if winW <= 0 {
 		winW = 160
@@ -121,31 +135,114 @@ func userOption(name, fallback string) string {
 	return strings.TrimSpace(out)
 }
 
-// cmdToggle opens the navigator as a full-height pane docked on the left of
-// the current window, or closes it if one is already there.
+// The panel is global to the server: one pane that travels. @bmux_open
+// holds the open/closed state; hooks on window/session changes call
+// `bmux ensure`, which join-panes the live panel pane (TUI process and all)
+// into whatever window the client now shows.
+
+// findPanelPane returns the traveling panel's pane id, wherever it lives.
+func findPanelPane() string {
+	out, err := tmuxOut("list-panes", "-a", "-F", "#{pane_id}"+sep+"#{@bmux_panel}")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		parts := strings.SplitN(line, sep, 2)
+		if len(parts) == 2 && parts[1] == "1" {
+			return parts[0]
+		}
+	}
+	return ""
+}
+
+// cmdToggle flips the global panel: closes it wherever it is, or opens it
+// in the current window and marks the server-wide state open.
 func cmdToggle() error {
 	if !insideTmux() {
 		return fmt.Errorf("toggle only works inside tmux")
 	}
-	out, err := tmuxOut("list-panes", "-F", "#{pane_id}"+sep+"#{@bmux_panel}")
+	if id := findPanelPane(); id != "" {
+		_ = tmuxRun("set-option", "-g", "@bmux_open", "0")
+		return tmuxRun("kill-pane", "-t", id)
+	}
+	if err := spawnPanel("", true); err != nil {
+		return err
+	}
+	return tmuxRun("set-option", "-g", "@bmux_open", "1")
+}
+
+// spawnPanel docks a fresh panel on the left of target (or the current
+// window when target is empty). focus moves to the panel only when asked.
+func spawnPanel(target string, focus bool) error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	args := []string{"split-window", "-hbf", "-l", strconv.Itoa(panelWidth(target))}
+	if !focus {
+		args = append(args, "-d")
+	}
+	if target != "" {
+		args = append(args, "-t", target)
+	}
+	args = append(args, "-P", "-F", "#{pane_id}", self)
+	paneID, err := tmuxOut(args...)
+	if err != nil {
+		return err
+	}
+	return tmuxRun("set-option", "-p", "-t", strings.TrimSpace(paneID), "@bmux_panel", "1")
+}
+
+// cmdEnsure is the hook target: when the global panel is open, make sure it
+// is docked in the window the client is looking at — moving the live pane
+// (join-pane), or respawning it if the process died.
+func cmdEnsure() error {
+	if userOption("@bmux_open", "0") != "1" {
+		return nil
+	}
+	win := activeWindowID()
+	if win == "" {
+		return nil
+	}
+	// Skip windows already showing bmux (the panel itself, or the home tree).
+	out, err := tmuxOut("list-panes", "-t", win, "-F",
+		"#{pane_current_command}"+sep+"#{@bmux_panel}")
 	if err != nil {
 		return err
 	}
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 		parts := strings.SplitN(line, sep, 2)
-		if len(parts) == 2 && parts[1] == "1" {
-			return tmuxRun("kill-pane", "-t", parts[0])
+		if len(parts) == 2 && (parts[1] == "1" || parts[0] == "bmux") {
+			return nil
 		}
 	}
-	self, err := os.Executable()
-	if err != nil {
-		return err
+	if id := findPanelPane(); id != "" {
+		return tmuxRun("join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(win)), "-s", id, "-t", win)
 	}
-	paneID, err := tmuxOut("split-window", "-hbf", "-l", strconv.Itoa(panelWidth()), "-P", "-F", "#{pane_id}", self)
+	return spawnPanel(win, false)
+}
+
+// activeWindowID resolves the window the (first) attached client shows.
+func activeWindowID() string {
+	out, err := tmuxOut("list-clients", "-F", "#{client_session}")
 	if err != nil {
-		return err
+		return ""
 	}
-	return tmuxRun("set-option", "-p", "-t", strings.TrimSpace(paneID), "@bmux_panel", "1")
+	sess := strings.SplitN(strings.TrimRight(out, "\n"), "\n", 2)[0]
+	if sess == "" {
+		return ""
+	}
+	out, err = tmuxOut("list-windows", "-t", "="+sess, "-F", "#{window_id}"+sep+"#{window_active}")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		parts := strings.SplitN(line, sep, 2)
+		if len(parts) == 2 && parts[1] == "1" {
+			return parts[0]
+		}
+	}
+	return ""
 }
 
 // cmdUp boots the full environment: a detached session for every worktree of
