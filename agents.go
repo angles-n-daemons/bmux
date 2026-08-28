@@ -27,14 +27,24 @@ var shellCommands = map[string]bool{
 
 func isSpinner(r rune) bool { return strings.ContainsRune(brailleSpinners, r) }
 
+// claudeTitleName reports whether a pane title carries the Claude Code
+// marker (✳ idle / braille spinner running), returning the agent's display
+// name from the title when it does.
+func claudeTitleName(title string) (string, bool) {
+	runes := []rune(title)
+	if len(runes) < 2 || (runes[0] != '✳' && !isSpinner(runes[0])) || runes[1] != ' ' {
+		return "", false
+	}
+	return strings.TrimSpace(string(runes[2:])), true
+}
+
 // detectAgents returns per-session agent statuses, ordered
 // running > waiting > stopped within each session.
 func detectAgents(panes []Pane) map[string][]agentStatus {
 	result := map[string][]agentStatus{}
 	var candidates []Pane
 	for _, p := range panes {
-		runes := []rune(p.Title)
-		if len(runes) < 2 || (runes[0] != '✳' && !isSpinner(runes[0])) || runes[1] != ' ' {
+		if _, ok := claudeTitleName(p.Title); !ok {
 			continue
 		}
 		if shellCommands[p.Command] {

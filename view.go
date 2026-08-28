@@ -9,6 +9,43 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// Nerd-font glyphs per foreground command; Claude panes are detected via
+// their title marker instead and get ✳ in Anthropic clay.
+var commandIcons = map[string]string{
+	"zsh": "", "bash": "", "sh": "", "fish": "", "dash": "", "ksh": "",
+	"nvim": "", "vim": "", "vi": "",
+	"node": "",
+	"python": "", "python3": "", "ipython": "",
+	"go": "",
+	"git": "", "tig": "", "lazygit": "",
+	"docker": "",
+	"ssh": "", "mosh-client": "",
+	"cargo": "", "rustc": "",
+	"make": "", "cmake": "",
+	"htop": "", "top": "", "btop": "",
+	"man": "", "less": "", "bat": "",
+}
+
+const defaultIcon = ""
+
+var styleClaude = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
+
+// paneGlyph returns the icon (plain glyph), display name, and whether this
+// is a Claude pane (for styling).
+func paneGlyph(p Pane) (icon, name string, isClaude bool) {
+	if title, ok := claudeTitleName(p.Title); ok && !shellCommands[p.Command] {
+		name = title
+		if name == "" || name == "Claude Code" {
+			name = "claude"
+		}
+		return "✳", name, true
+	}
+	if ic, ok := commandIcons[p.Command]; ok {
+		return ic, p.Command, false
+	}
+	return defaultIcon, p.Command, false
+}
+
 var (
 	styleRepo    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	styleDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
@@ -64,9 +101,19 @@ func (m model) foldMarker(r row) string {
 		return " "
 	}
 	if m.isExpanded(r) {
-		return "▾"
+		return "" // cod chevron-down
 	}
-	return "▸"
+	return "" // cod chevron-right
+}
+
+// activePaneOf finds the active pane of a window, for its icon.
+func (m model) activePaneOf(session string, window int) *Pane {
+	for _, p := range m.snap.Panes[session] {
+		if p.Window == window && p.Active {
+			return &p
+		}
+	}
+	return nil
 }
 
 // renderRow builds one display line. Selected rows are rendered plain and
@@ -79,7 +126,11 @@ func (m model) renderRow(r row, selected bool) string {
 
 	switch r.Kind {
 	case rowRepo:
-		line := plain(m.foldMarker(r), " ", r.Repo.Name)
+		icon := "" // closed folder
+		if m.isExpanded(r) {
+			icon = "" // open folder
+		}
+		line := plain(icon, " ", r.Repo.Name)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
@@ -151,9 +202,19 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Win.Active {
 			mark = "*"
 		}
-		line := plain(m.foldMarker(r), " ", fmt.Sprintf("%d: %s%s", r.Win.Index, r.Win.Name, mark))
+		icon, isClaude := defaultIcon, false
+		name := r.Win.Name
+		if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
+			icon, _, isClaude = paneGlyph(*ap)
+		}
+		line := plain(m.foldMarker(r), " ", fmt.Sprintf("%d: %s %s%s", r.Win.Index, icon, name, mark))
 		if selected {
 			return styleCursor.Render(truncate(line, width))
+		}
+		if isClaude {
+			prefix := indent + m.foldMarker(r) + fmt.Sprintf(" %d: ", r.Win.Index)
+			rest := truncate(name+mark, width-len([]rune(prefix))-2)
+			return prefix + styleClaude.Render(icon) + " " + rest
 		}
 		return truncate(line, width)
 
@@ -162,9 +223,15 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Pane.Active {
 			mark = "*"
 		}
-		line := plain(fmt.Sprintf("  %d: %s%s", r.Pane.Index, r.Pane.Command, mark))
+		icon, name, isClaude := paneGlyph(*r.Pane)
+		line := plain(fmt.Sprintf("  %d: %s %s%s", r.Pane.Index, icon, name, mark))
 		if selected {
 			return styleCursor.Render(truncate(line, width))
+		}
+		if isClaude {
+			prefix := indent + fmt.Sprintf("  %d: ", r.Pane.Index)
+			rest := truncate(name+mark, width-len([]rune(prefix))-2)
+			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
 		}
 		return styleDim.Render(truncate(line, width))
 	}
