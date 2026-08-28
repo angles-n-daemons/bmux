@@ -99,6 +99,9 @@ func gather(discoveredRoots []string) snapshot {
 	agents := detectAgents(allPanes)
 	panesBySession := map[string][]Pane{}
 	for _, p := range allPanes {
+		if p.Command == "bmux" {
+			continue // never show ourselves (panel/home tree) in the tree
+		}
 		panesBySession[p.Session] = append(panesBySession[p.Session], p)
 	}
 

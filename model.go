@@ -28,6 +28,11 @@ type row struct {
 	Sess *sessRow
 	Win  *Window
 	Pane *Pane
+
+	// Window rows: pane count, and the pane itself when there is exactly
+	// one — such windows render as the pane and don't expand.
+	PaneCount  int
+	SinglePane *Pane
 }
 
 // sessionName returns the session behind this row, if any.
@@ -253,8 +258,10 @@ func (r row) expandable() bool {
 		return true
 	case rowWorktree:
 		return r.WT.Session != nil
-	case rowSession, rowWindow:
+	case rowSession:
 		return true
+	case rowWindow:
+		return r.PaneCount > 1 // single-pane windows render as the pane itself
 	}
 	return false
 }
@@ -616,10 +623,15 @@ func (m *model) appendSessionChildren(session string, depth int) {
 	}
 	for _, w := range m.snap.Windows[session] {
 		win := w
-		wr := row{Kind: rowWindow, Key: fmt.Sprintf("win:%s:%d", session, w.Index), Depth: depth, Win: &win}
+		panes := panesByWindow[w.Index]
+		wr := row{Kind: rowWindow, Key: fmt.Sprintf("win:%s:%d", session, w.Index), Depth: depth, Win: &win, PaneCount: len(panes)}
+		if len(panes) == 1 {
+			p := panes[0]
+			wr.SinglePane = &p
+		}
 		m.rows = append(m.rows, wr)
-		if m.isExpanded(wr) {
-			for _, p := range panesByWindow[w.Index] {
+		if wr.PaneCount > 1 && m.isExpanded(wr) {
+			for _, p := range panes {
 				pane := p
 				m.rows = append(m.rows, row{
 					Kind:  rowPane,

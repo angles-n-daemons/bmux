@@ -141,12 +141,21 @@ func (m model) renderRow(r row, selected bool) string {
 		var agents []agentStatus
 		live := false
 		if r.Kind == rowWorktree {
-			name = filepath.Base(r.WT.WT.Path)
+			base := filepath.Base(r.WT.WT.Path)
+			name = base
+			// Drop the redundant repo prefix (cockroach-primary → primary).
+			if r.Repo != nil && r.Repo.Root != "" {
+				if t := strings.TrimPrefix(name, r.Repo.Name+"-"); t != "" {
+					name = t
+				}
+			}
 			branch = r.WT.WT.Branch
 			if r.WT.Session != nil {
 				live = true
 				agents = r.WT.Agents
-				if r.WT.Session.Name != name {
+				// Bracket the session name only when it differs from the
+				// worktree's actual (untrimmed) name.
+				if r.WT.Session.Name != base {
 					sessName = r.WT.Session.Name
 				}
 			}
@@ -202,17 +211,23 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Win.Active {
 			mark = "*"
 		}
-		icon, isClaude := defaultIcon, false
-		name := r.Win.Name
-		if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
-			icon, _, isClaude = paneGlyph(*ap)
+		var icon, name string
+		var isClaude bool
+		if r.SinglePane != nil {
+			// A one-pane window IS its pane: render the pane, don't expand.
+			icon, name, isClaude = paneGlyph(*r.SinglePane)
+		} else {
+			icon, name = defaultIcon, r.Win.Name
+			if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
+				icon, _, isClaude = paneGlyph(*ap)
+			}
 		}
-		line := plain(m.foldMarker(r), " ", fmt.Sprintf("%d: %s %s%s", r.Win.Index, icon, name, mark))
+		line := plain(m.foldMarker(r), " ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
 		if isClaude {
-			prefix := indent + m.foldMarker(r) + fmt.Sprintf(" %d: ", r.Win.Index)
+			prefix := indent + m.foldMarker(r) + " "
 			rest := truncate(name+mark, width-len([]rune(prefix))-2)
 			return prefix + styleClaude.Render(icon) + " " + rest
 		}
@@ -224,14 +239,13 @@ func (m model) renderRow(r row, selected bool) string {
 			mark = "*"
 		}
 		icon, name, isClaude := paneGlyph(*r.Pane)
-		line := plain(fmt.Sprintf("  %d: %s %s%s", r.Pane.Index, icon, name, mark))
+		line := plain(icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
 		if isClaude {
-			prefix := indent + fmt.Sprintf("  %d: ", r.Pane.Index)
-			rest := truncate(name+mark, width-len([]rune(prefix))-2)
-			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
+			rest := truncate(name+mark, width-len([]rune(indent))-3)
+			return styleDim.Render(indent) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
 		}
 		return styleDim.Render(truncate(line, width))
 	}
