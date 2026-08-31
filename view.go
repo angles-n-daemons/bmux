@@ -135,16 +135,37 @@ func (m model) foldMarker(r row) string {
 	return iconChevronRight
 }
 
-// claudeMark styles a Claude pane's ✳ by its state: green working, red
-// waiting for input, clay idle — same colors the session badges use.
-func (m model) claudeMark(paneID string) lipgloss.Style {
-	switch m.snap.AgentByPane[paneID] {
+// agentGlyph is a single pane's status indicator, badge-colored.
+func agentGlyph(s agentStatus) string {
+	switch s {
 	case agentRunning:
-		return styleRunning
+		return styleRunning.Render("▶")
 	case agentWaiting:
-		return styleWaiting
+		return styleWaiting.Render("⏸")
 	}
-	return styleClaude
+	return styleStopped.Render("⏹")
+}
+
+// paneBadge returns the trailing indicator for a Claude pane row.
+func (m model) paneBadge(paneID string) string {
+	if s, ok := m.snap.AgentByPane[paneID]; ok {
+		return " " + agentGlyph(s)
+	}
+	return ""
+}
+
+// windowAgents aggregates agent statuses across a window's panes.
+func (m model) windowAgents(session string, window int) []agentStatus {
+	var out []agentStatus
+	for _, p := range m.snap.Panes[session] {
+		if p.Window == window {
+			if s, ok := m.snap.AgentByPane[p.ID]; ok {
+				out = append(out, s)
+			}
+		}
+	}
+	sortAgentStatuses(out)
+	return out
 }
 
 // activePaneOf finds the active pane of a window, for its icon.
@@ -213,7 +234,12 @@ func (m model) renderRow(r row, selected bool) string {
 		if sessName != "" {
 			head += " [" + sessName + "]"
 		}
-		badge := agentBadge(agents)
+		// Aggregate badge only while collapsed; expanded rows hand the
+		// indicators down to their children.
+		badge := ""
+		if !(r.expandable() && m.isExpanded(r)) {
+			badge = agentBadge(agents)
+		}
 
 		if selected {
 			line := head
@@ -250,29 +276,34 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Win.Active {
 			mark = "*"
 		}
-		var icon, name string
+		var icon, name, badge string
 		var isClaude bool
-		pane := r.SinglePane
-		if pane != nil {
+		if r.SinglePane != nil {
 			// A one-pane window IS its pane: render the pane, don't expand.
-			icon, name, isClaude = paneGlyph(*pane)
+			icon, name, isClaude = paneGlyph(*r.SinglePane)
+			if isClaude {
+				badge = m.paneBadge(r.SinglePane.ID)
+			}
 		} else {
 			icon, name = defaultIcon, r.Win.Name
 			if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
 				icon, _, isClaude = paneGlyph(*ap)
-				pane = ap
+			}
+			if !m.isExpanded(r) {
+				badge = agentBadge(m.windowAgents(r.Win.Session, r.Win.Index))
 			}
 		}
 		line := plain(m.foldMarker(r), " ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
-		if isClaude && pane != nil {
+		room := width - lipgloss.Width(badge)
+		if isClaude {
 			prefix := indent + m.foldMarker(r) + " "
-			rest := truncate(name+mark, width-len([]rune(prefix))-2)
-			return prefix + m.claudeMark(pane.ID).Render(icon) + " " + rest
+			rest := truncate(name+mark, room-len([]rune(prefix))-2)
+			return prefix + styleClaude.Render(icon) + " " + rest + badge
 		}
-		return truncate(line, width)
+		return truncate(line, room) + badge
 
 	case rowPane:
 		mark := " "
@@ -280,16 +311,21 @@ func (m model) renderRow(r row, selected bool) string {
 			mark = "*"
 		}
 		icon, name, isClaude := paneGlyph(*r.Pane)
+		badge := ""
+		if isClaude {
+			badge = m.paneBadge(r.Pane.ID)
+		}
 		// Two-cell gutter (the fold-marker slot) so panes sit one visual
 		// step deeper than their window row.
 		line := plain("  ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
+		room := width - lipgloss.Width(badge)
 		if isClaude {
 			prefix := indent + "  "
-			rest := truncate(name+mark, width-len([]rune(prefix))-2)
-			return styleDim.Render(prefix) + m.claudeMark(r.Pane.ID).Render(icon) + " " + styleDim.Render(rest)
+			rest := truncate(name+mark, room-len([]rune(prefix))-2)
+			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest) + badge
 		}
 		return styleDim.Render(truncate(line, width))
 	}
