@@ -182,7 +182,8 @@ func (m model) activePaneOf(session string, window int) *Pane {
 // reversed so the cursor is readable regardless of inner styling.
 func (m model) renderRow(r row, selected bool) string {
 	indent := strings.Repeat("  ", r.Depth)
-	width := m.width
+	// Keep a two-cell right margin so truncated rows never touch the edge.
+	width := m.width - 2
 
 	plain := func(parts ...string) string { return indent + strings.Join(parts, "") }
 
