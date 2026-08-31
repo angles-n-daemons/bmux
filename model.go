@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -68,6 +69,11 @@ type (
 		err    error
 		notice string
 	}
+	// forceOfferMsg re-prompts when a worktree removal didn't take
+	// (dirty tree): confirm again, then remove with force.
+	forceOfferMsg struct {
+		root, path, name, reason string
+	}
 )
 
 type model struct {
@@ -85,14 +91,14 @@ type model struct {
 	// expanded overrides the default fold state (repos open, rest closed).
 	expanded map[string]bool
 
-	mode       mode
-	promptRepo string // main root the pending `a` applies to
-	input      string
+	mode         mode
+	promptRepo   string // main root the pending `a` applies to
+	input        string
 	confirmTitle string
 	confirmMsg   string
 	confirmFn    func() tea.Msg
-	busyMsg    string
-	footer     string
+	busyMsg      string
+	footer       string
 
 	width, height int
 }
@@ -157,6 +163,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case discoverMsg:
 		m.discoveredRoots = msg.roots
 		return m, m.refreshCmd()
+	case forceOfferMsg:
+		backend := m.backend
+		m.mode = modeConfirm
+		m.confirmTitle = "Force delete"
+		m.confirmMsg = fmt.Sprintf("%s: %s — force remove? uncommitted changes will be lost", msg.name, msg.reason)
+		m.confirmFn = func() tea.Msg {
+			if err := backend.Remove(msg.root, msg.path, msg.name, true); err != nil {
+				return actionDoneMsg{err: err}
+			}
+			return actionDoneMsg{notice: "removed " + msg.name}
+		}
+		return m, nil
 	case actionDoneMsg:
 		m.mode = modeNormal
 		if msg.err != nil {
@@ -520,7 +538,17 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 						return actionDoneMsg{err: err}
 					}
 				}
-				if err := backend.Remove(root, path, name); err != nil {
+				err := backend.Remove(root, path, name, false)
+				// Some backends "skip" dirty worktrees without failing
+				// (roachdev warns and exits 0) — trust the filesystem.
+				if _, statErr := os.Stat(path); statErr == nil {
+					reason := "has uncommitted changes"
+					if err != nil {
+						reason = err.Error()
+					}
+					return forceOfferMsg{root: root, path: path, name: name, reason: reason}
+				}
+				if err != nil {
 					return actionDoneMsg{err: err}
 				}
 				return actionDoneMsg{notice: "removed " + name}

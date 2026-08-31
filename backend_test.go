@@ -50,11 +50,38 @@ func TestGitBackendCreateRemove(t *testing.T) {
 		t.Fatalf("unexpected worktrees: %+v", wts)
 	}
 
-	if err := b.Remove(repo, path, "scratch"); err != nil {
+	if err := b.Remove(repo, path, "scratch", false); err != nil {
 		t.Fatal(err)
 	}
 	if wts := repoWorktrees(repo); len(wts) != 1 {
 		t.Fatalf("worktree not removed: %+v", wts)
+	}
+}
+
+func TestGitBackendDirtyRemoveNeedsForce(t *testing.T) {
+	repo := initTestRepo(t)
+	t.Setenv("BMUX_WORKTREE_DIR", t.TempDir())
+
+	var b gitBackend
+	path, err := b.Create(repo, "dirty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "junk.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Remove(repo, path, "dirty", false); err == nil {
+		t.Fatal("removing a dirty worktree without force should fail")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("dirty worktree should still exist after refused removal")
+	}
+	if err := b.Remove(repo, path, "dirty", true); err != nil {
+		t.Fatalf("force removal failed: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("worktree should be gone after force removal")
 	}
 }
 

@@ -14,8 +14,9 @@ type worktreeBackend interface {
 	// Create makes a worktree named name (empty = auto-generate) on a new
 	// branch, for the repo rooted at mainRoot. Returns the worktree path.
 	Create(mainRoot, name string) (string, error)
-	// Remove deletes the worktree at path (named name) from mainRoot's repo.
-	Remove(mainRoot, path, name string) error
+	// Remove deletes the worktree at path (named name) from mainRoot's
+	// repo. force discards uncommitted changes.
+	Remove(mainRoot, path, name string, force bool) error
 	// DiscoverRoots returns extra main-repo roots this backend knows about.
 	DiscoverRoots() []string
 }
@@ -49,8 +50,12 @@ func (roachdevBackend) Create(mainRoot, name string) (string, error) {
 	return lines[len(lines)-1], nil
 }
 
-func (roachdevBackend) Remove(mainRoot, path, name string) error {
-	if err := exec.Command("roachdev", "wt", "rm", name).Run(); err != nil {
+func (roachdevBackend) Remove(mainRoot, path, name string, force bool) error {
+	args := []string{"wt", "rm", name}
+	if force {
+		args = append(args, "-f")
+	}
+	if err := exec.Command("roachdev", args...).Run(); err != nil {
 		return commandError("roachdev wt rm", err)
 	}
 	return nil
@@ -119,8 +124,13 @@ func (gitBackend) Create(mainRoot, name string) (string, error) {
 	return dest, nil
 }
 
-func (gitBackend) Remove(mainRoot, path, name string) error {
-	if err := exec.Command("git", "-C", mainRoot, "worktree", "remove", path).Run(); err != nil {
+func (gitBackend) Remove(mainRoot, path, name string, force bool) error {
+	args := []string{"-C", mainRoot, "worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, path)
+	if err := exec.Command("git", args...).Run(); err != nil {
 		return commandError("git worktree remove", err)
 	}
 	return nil
