@@ -73,6 +73,9 @@ var (
 	styleRepo    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	styleDim     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleCurrent = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	// Session titles: bold always; lightness signals online vs offline.
+	styleNameLive = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("253"))
+	styleNameOff  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("243"))
 	styleLive    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	styleCursor  = lipgloss.NewStyle().Reverse(true)
 	styleRunning = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -206,10 +209,13 @@ func (m model) renderRow(r row, selected bool) string {
 			return styleCursor.Render(truncate(line, width))
 		}
 
-		// styled: name emphasized when it's the current session
-		nameStyled := name
-		current := r.sessionName() != "" && r.sessionName() == m.snap.CurrentSession
-		if current {
+		// styled: bold titles, lighter when online, grayer when offline;
+		// the current session gets its highlight color on top
+		nameStyled := styleNameOff.Render(name)
+		if live {
+			nameStyled = styleNameLive.Render(name)
+		}
+		if r.sessionName() != "" && r.sessionName() == m.snap.CurrentSession {
 			nameStyled = styleCurrent.Render(name)
 		}
 		markerStyled := styleDim.Render(marker)
