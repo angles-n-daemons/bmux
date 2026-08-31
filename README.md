@@ -5,22 +5,35 @@ in, every git worktree inside it, and the tmux session attached to each —
 one tree, docked on the left, with Claude Code agent statuses inline.
 
 ```
- bmux
-▾ cockroach
-  ▸● cockroach-primary ▶1  bdillmann/crdb-nodes-view
-  ▸● cockroach-secondary ⏹1  crdb-65148
-   ○ cockroach-mergebase  f0fc9e360
-▾ goodhistogram
-  ▸● goodhistogram  bdillmann/rust-port
+ bmux                          Claude: $12.34
+ cockroach
+   main [jasonranges]  bdillmann/goodhi…
+       roachdev*
+        ✳ Implement Jira ticket CRDB-661 ▶
+         zsh*
+   secondary ▶1  crdb-65148-wait-labels
+     mergebase  f0fc9e360
+ env
+   main [tmuxfix] ⏹1  main
 ```
 
-- `●` worktree with a live session, `○` no session yet — press ⏎ and one is
-  created on the spot.
-- `▶2 ⏸1 ⏹3` — Claude Code agents in that session: running / waiting for
-  input / stopped.
+- One row per worktree: the main checkout is `main`, linked worktrees drop
+  the repo prefix. Bright bold titles have a live session; grayed ones
+  don't — press ⏎ and one is created on the spot.
+- `▶2 ⏸1 ⏹3` — Claude Code agents: running / waiting for input / stopped.
+  Collapsed rows show the aggregate; expanded rows hand the indicator down
+  to the individual `✳` panes.
+- The title bar can show a status figure (see `@bmux_status_cmd`).
 - Repos are discovered from live sessions, [roachdev](https://github.com/cockroachlabs/roachdev)
   worktrees (optional), and a persistent registry of every repo that has ever
   had a session (`~/.config/bmux/repos.json`).
+
+## Quickstart
+
+`prefix + e` opens and closes the panel — it's global, following you across
+windows and sessions. Move with `j`/`k` (or arrows), fold with `l`/`h` (or
+`→`/`←`), and hit `⏎` to jump to what's under the cursor — sessions start
+on demand. `a` creates a worktree, `d` deletes, `?` shows everything else.
 
 ## Install
 
@@ -71,9 +84,9 @@ Quitting the panel with `q` closes it globally.
 
 | Key | Action |
 |---|---|
-| `j` / `k` | move |
+| `j` / `k` or `↓` / `↑` | move |
 | `⏎` | jump to session (creating it first if the worktree has none); on window/pane rows, jump straight there |
-| `l` / `h` | expand / collapse (sessions expand into windows, windows into panes); `h` on a folded row jumps to its parent |
+| `l` / `h` or `→` / `←` | expand / collapse (sessions expand into windows, windows into panes); `h` on a folded row jumps to its parent |
 | `a` | create a worktree in the repo under the cursor (empty name = auto-generated), on a new branch named after it, with a session, and jump to it |
 | `d` | delete: kills the session **and** removes the worktree after a `y/N` confirm. On a main checkout it only kills the session — the checkout itself is never touched. On an unpinnable repo header, removes it from the registry. |
 | `g` / `G` | first / last row |

@@ -224,9 +224,9 @@ func (m model) applyNormalKey(key string) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.refreshCmd(), m.discoverCmd())
 	case "enter":
 		return m.enterRow()
-	case "l":
+	case "l", "right":
 		return m.expandRow()
-	case "h":
+	case "h", "left":
 		return m.collapseRow()
 	case "a":
 		return m.startCreate()
