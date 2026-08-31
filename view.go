@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/angles-n-daemons/bmux/modal"
 )
@@ -78,15 +77,15 @@ var (
 	// Session titles: bold always; lightness signals online vs offline.
 	styleNameLive = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("253"))
 	styleNameOff  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("243"))
-	styleLive    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	styleCursor  = lipgloss.NewStyle().Reverse(true)
-	styleRunning = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	styleWaiting = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	styleStopped = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleTitle   = lipgloss.NewStyle().Bold(true)
-	styleFooter  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	stylePrompt  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
-	styleError   = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	styleLive     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	styleCursor   = lipgloss.NewStyle().Reverse(true)
+	styleRunning  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	styleWaiting  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	styleStopped  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	styleTitle    = lipgloss.NewStyle().Bold(true)
+	styleFooter   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stylePrompt   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
 func agentBadge(agents []agentStatus) string {
@@ -299,17 +298,69 @@ func (m model) View() string {
 		lines[1+i] = m.renderRow(m.rows[offset+i], offset+i == m.cursor && m.mode == modeNormal)
 	}
 
-	footer := "⏎ jump  a new  d del  l/h fold  q quit"
-	if m.footer != "" {
-		footer = m.footer
-	}
-	lines[h-1] = styleFooter.Render(truncate(footer, w))
+	lines[h-1] = m.hintLine(w)
 
 	out := strings.Join(lines, "\n")
 	if box := m.modalView(); box != "" {
 		out = overlayCenter(out, box, w, h)
 	}
 	return out
+}
+
+// hintLine renders the footer: a transient notice when present, otherwise
+// hints for what the cursor is on.
+func (m model) hintLine(width int) string {
+	if m.footer != "" {
+		return styleFooter.Render(truncate(m.footer, width))
+	}
+	hints := "? help"
+	if r := m.cur(); r != nil {
+		switch {
+		case r.Kind == rowRepo:
+			hints = "⏎ fold · a new worktree · ? help"
+		case r.Kind == rowWorktree && r.WT.Session == nil:
+			hints = "⏎ start session · d remove · ? help"
+		case r.Kind == rowWorktree || r.Kind == rowSession:
+			hints = "⏎ jump · l unfold · d delete · ? help"
+		default:
+			hints = "⏎ jump · h fold · ? help"
+		}
+	}
+	return styleFooter.Render(truncate(hints, width))
+}
+
+// helpView is the ? key reference, grouped and column-aligned.
+func (m model) helpView(boxW int) string {
+	key := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	group := lipgloss.NewStyle().Bold(true)
+	dim := styleFooter
+
+	entry := func(k, desc string) string {
+		pad := 7 - lipgloss.Width(k)
+		if pad < 1 {
+			pad = 1
+		}
+		return "  " + key.Render(k) + strings.Repeat(" ", pad) + desc
+	}
+	lines := []string{
+		group.Render("Navigate"),
+		entry("j k", "move"+strings.Repeat(" ", 12)+dim.Render("g G  first / last")),
+		entry("⏎", "open — jump, or start the session"),
+		entry("l h", "unfold / fold (h twice: to parent)"),
+		"",
+		group.Render("Act"),
+		entry("a", "new worktree, branch, and session"),
+		entry("d", "delete what's under the cursor"),
+		entry("r", "refresh & rediscover repos"),
+		"",
+		group.Render("Panel"),
+		entry("q esc", "close"),
+	}
+	return modal.Lines(modal.Opts{
+		Width: boxW, Title: "bmux",
+		Footer: "any key closes",
+		Accent: lipgloss.Color("6"),
+	}, lines)
 }
 
 // modalView renders the centered pop-up for prompt/confirm/busy modes.
@@ -343,6 +394,8 @@ func (m model) modalView() string {
 			Width: boxW, Title: "Working",
 			Accent: lipgloss.Color("3"),
 		}, m.busyMsg)
+	case modeHelp:
+		return m.helpView(boxW)
 	}
 	return ""
 }
@@ -366,14 +419,11 @@ func overlayCenter(bg, box string, w, h int) string {
 		if r < 0 || r >= len(bgLines) {
 			break
 		}
-		line := bgLines[r]
-		if lw := lipgloss.Width(line); lw < w {
-			line += strings.Repeat(" ", w-lw)
-		}
-		// Reset styling at both seams so the underlying row's colors don't
-		// bleed into the box or vice versa.
-		bgLines[r] = ansi.Truncate(line, left, "") + "\x1b[0m" + bl + "\x1b[0m" +
-			ansi.TruncateLeft(line, left+boxW, "")
+		// The modal rows become a clean band: splicing box edges into rows
+		// containing nerd glyphs drifts by a column (PUA chars are counted
+		// double-width by the ANSI truncation tables), so background text
+		// on these rows is dropped instead of cut around.
+		bgLines[r] = strings.Repeat(" ", left) + "\x1b[0m" + bl
 	}
 	return strings.Join(bgLines, "\n")
 }

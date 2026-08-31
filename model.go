@@ -57,6 +57,7 @@ const (
 	modePrompt
 	modeConfirm
 	modeBusy
+	modeHelp
 )
 
 type (
@@ -172,6 +173,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateConfirm(msg)
 		case modeBusy:
 			return m, nil
+		case modeHelp:
+			m.mode = modeNormal
+			return m, nil
 		}
 		return m.updateNormal(msg)
 	}
@@ -228,6 +232,9 @@ func (m model) applyNormalKey(key string) (tea.Model, tea.Cmd) {
 		return m.startCreate()
 	case "d":
 		return m.startDelete()
+	case "?":
+		m.mode = modeHelp
+		return m, nil
 	default:
 		return m, nil
 	}

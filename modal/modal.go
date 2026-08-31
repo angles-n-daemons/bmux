@@ -33,6 +33,12 @@ func Notice(o Opts, message string) string {
 	return box(o, wrap(message, o.Width-4))
 }
 
+// Lines renders pre-formatted lines verbatim (no wrapping) — for tables,
+// key references, and other layouts the caller controls.
+func Lines(o Opts, lines []string) string {
+	return box(o, lines)
+}
+
 func box(o Opts, content []string) string {
 	w := o.Width
 	if w < 16 {

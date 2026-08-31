@@ -78,6 +78,7 @@ Quitting the panel with `q` closes it globally.
 | `d` | delete: kills the session **and** removes the worktree after a `y/N` confirm. On a main checkout it only kills the session — the checkout itself is never touched. On an unpinnable repo header, removes it from the registry. |
 | `g` / `G` | first / last row |
 | `r` | refresh now (the tree also refreshes every 2s) |
+| `?` | help |
 | `q` / `esc` | close |
 
 ## Appearance
