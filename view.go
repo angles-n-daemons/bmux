@@ -11,22 +11,45 @@ import (
 
 // Nerd-font glyphs per foreground command; Claude panes are detected via
 // their title marker instead and get ✳ in Anthropic clay.
-var commandIcons = map[string]string{
-	"zsh": "", "bash": "", "sh": "", "fish": "", "dash": "", "ksh": "",
-	"nvim": "", "vim": "", "vi": "",
-	"node": "",
-	"python": "", "python3": "", "ipython": "",
-	"go": "",
-	"git": "", "tig": "", "lazygit": "",
-	"docker": "",
-	"ssh": "", "mosh-client": "",
-	"cargo": "", "rustc": "",
-	"make": "", "cmake": "",
-	"htop": "", "top": "", "btop": "",
-	"man": "", "less": "", "bat": "",
-}
+// Written as \u escapes: literal PUA glyphs don't survive all tooling.
+const (
+	iconShell  = "" // nf-dev-terminal
+	iconVim    = "" // nf-custom-vim
+	iconNeovim = "" // nf-custom-neovim
+	iconNode   = "" // nf-dev-nodejs_small
+	iconPython = "" // nf-dev-python
+	iconGo     = "" // nf-seti-go
+	iconGit    = "" // nf-dev-git
+	iconDocker = "" // nf-linux-docker
+	iconServer = "" // nf-fa-server
+	iconRust   = "" // nf-dev-rust
+	iconWrench = "" // nf-fa-wrench
+	iconGauge  = "" // nf-fa-dashboard
+	iconBook   = "" // nf-fa-book
 
-const defaultIcon = ""
+	defaultIcon = "" // nf-fa-terminal
+
+	iconFolderClosed = "" // nf-fa-folder
+	iconFolderOpen   = "" // nf-fa-folder_open
+	iconChevronRight = "" // nf-cod-chevron_right
+	iconChevronDown  = "" // nf-cod-chevron_down
+)
+
+var commandIcons = map[string]string{
+	"zsh": iconShell, "bash": iconShell, "sh": iconShell, "fish": iconShell,
+	"dash": iconShell, "ksh": iconShell,
+	"nvim": iconNeovim, "vim": iconVim, "vi": iconVim,
+	"node":   iconNode,
+	"python": iconPython, "python3": iconPython, "ipython": iconPython,
+	"go":  iconGo,
+	"git": iconGit, "tig": iconGit, "lazygit": iconGit,
+	"docker": iconDocker,
+	"ssh":    iconServer, "mosh-client": iconServer,
+	"cargo": iconRust, "rustc": iconRust,
+	"make": iconWrench, "cmake": iconWrench,
+	"htop": iconGauge, "top": iconGauge, "btop": iconGauge,
+	"man": iconBook, "less": iconBook, "bat": iconBook,
+}
 
 var styleClaude = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
 
@@ -101,9 +124,9 @@ func (m model) foldMarker(r row) string {
 		return " "
 	}
 	if m.isExpanded(r) {
-		return "" // cod chevron-down
+		return iconChevronDown
 	}
-	return "" // cod chevron-right
+	return iconChevronRight
 }
 
 // activePaneOf finds the active pane of a window, for its icon.
@@ -126,9 +149,9 @@ func (m model) renderRow(r row, selected bool) string {
 
 	switch r.Kind {
 	case rowRepo:
-		icon := "" // closed folder
+		icon := iconFolderClosed
 		if m.isExpanded(r) {
-			icon = "" // open folder
+			icon = iconFolderOpen
 		}
 		line := plain(icon, " ", r.Repo.Name)
 		if selected {
