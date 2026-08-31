@@ -313,17 +313,27 @@ func (m model) hintLine(width int) string {
 	if m.footer != "" {
 		return styleFooter.Render(truncate(m.footer, width))
 	}
+	// Hints list only actions that work on the current row; fold hints
+	// track the row's actual state.
 	hints := "? help"
 	if r := m.cur(); r != nil {
+		fold := ""
+		if r.expandable() {
+			if m.isExpanded(*r) {
+				fold = " · h fold"
+			} else {
+				fold = " · l unfold"
+			}
+		}
 		switch {
 		case r.Kind == rowRepo:
 			hints = "a new worktree · ? help"
 		case r.Kind == rowWorktree && r.WT.Session == nil:
 			hints = "⏎ start session · d remove · ? help"
 		case r.Kind == rowWorktree || r.Kind == rowSession:
-			hints = "⏎ jump · l unfold · d delete · ? help"
-		default:
-			hints = "⏎ jump · h fold · ? help"
+			hints = "⏎ jump" + fold + " · d delete · ? help"
+		default: // windows and panes
+			hints = "⏎ jump" + fold + " · ? help"
 		}
 	}
 	return styleFooter.Render(truncate(hints, width))
