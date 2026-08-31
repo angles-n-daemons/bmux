@@ -191,11 +191,7 @@ func (m model) renderRow(r row, selected bool) string {
 			agents = r.Sess.Agents
 		}
 
-		marker := "○"
-		if live {
-			marker = "●"
-		}
-		head := plain(m.foldMarker(r), marker, " ", name)
+		head := plain(m.foldMarker(r), " ", name)
 		if sessName != "" {
 			head += " [" + sessName + "]"
 		}
@@ -218,11 +214,7 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.sessionName() != "" && r.sessionName() == m.snap.CurrentSession {
 			nameStyled = styleCurrent.Render(name)
 		}
-		markerStyled := styleDim.Render(marker)
-		if live {
-			markerStyled = styleLive.Render(marker)
-		}
-		out := indent + m.foldMarker(r) + markerStyled + " " + nameStyled
+		out := indent + m.foldMarker(r) + " " + nameStyled
 		if sessName != "" {
 			out += styleDim.Render(" [" + sessName + "]")
 		}
