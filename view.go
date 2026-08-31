@@ -83,6 +83,8 @@ var (
 	styleWaiting  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	styleStopped  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleTitle    = lipgloss.NewStyle().Bold(true)
+	// Title-bar status (costs): the scheme's warm focus yellow.
+	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffdb68"))
 	styleFooter   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	stylePrompt   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
 	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
@@ -289,7 +291,7 @@ func (m model) View() string {
 	lines[0] = styleTitle.Render(truncate(" bmux", w))
 	if s := m.snap.Status; s != "" {
 		if pad := w - len([]rune(" bmux")) - len([]rune(s)) - 1; pad > 0 {
-			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + styleDim.Render(s) + " "
+			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + styleStatus.Render(s) + " "
 		}
 	}
 
