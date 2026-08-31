@@ -37,6 +37,9 @@ type snapshot struct {
 	// Status is the first line of @bmux_status_cmd's output, shown
 	// right-aligned in the panel title bar (e.g. a cost/usage figure).
 	Status string
+	// AgentByPane maps pane ids to their Claude agent status, coloring
+	// each pane's ✳ mark by state.
+	AgentByPane map[string]agentStatus
 }
 
 // gather builds a snapshot. It also upserts every live-session repo into the
@@ -108,7 +111,7 @@ func gather(discoveredRoots []string) snapshot {
 		sort.Slice(ss, func(i, j int) bool { return ss[i].Name < ss[j].Name })
 	}
 
-	agents := detectAgents(allPanes)
+	agents, agentsByPane := detectAgents(allPanes)
 	panesBySession := map[string][]Pane{}
 	for _, p := range allPanes {
 		if p.Command == "bmux" {
@@ -181,6 +184,7 @@ func gather(discoveredRoots []string) snapshot {
 		Panes:          panesBySession,
 		CurrentSession: current,
 		Status:         status,
+		AgentByPane:    agentsByPane,
 	}
 	saveSnapshotCache(snap)
 	return snap

@@ -38,10 +38,11 @@ func claudeTitleName(title string) (string, bool) {
 	return strings.TrimSpace(string(runes[2:])), true
 }
 
-// detectAgents returns per-session agent statuses, ordered
-// running > waiting > stopped within each session.
-func detectAgents(panes []Pane) map[string][]agentStatus {
+// detectAgents returns agent statuses aggregated per session (ordered
+// running > waiting > stopped) and individually per pane id.
+func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatus) {
 	result := map[string][]agentStatus{}
+	byPane := map[string]agentStatus{}
 	var candidates []Pane
 	for _, p := range panes {
 		if _, ok := claudeTitleName(p.Title); !ok {
@@ -79,11 +80,12 @@ func detectAgents(panes []Pane) map[string][]agentStatus {
 	parallel(fns...)
 	for i, p := range candidates {
 		result[p.Session] = append(result[p.Session], statuses[i])
+		byPane[p.ID] = statuses[i]
 	}
 	for _, statuses := range result {
 		sortAgentStatuses(statuses)
 	}
-	return result
+	return result, byPane
 }
 
 func sortAgentStatuses(s []agentStatus) {

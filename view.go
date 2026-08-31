@@ -135,6 +135,18 @@ func (m model) foldMarker(r row) string {
 	return iconChevronRight
 }
 
+// claudeMark styles a Claude pane's ✳ by its state: green working, red
+// waiting for input, clay idle — same colors the session badges use.
+func (m model) claudeMark(paneID string) lipgloss.Style {
+	switch m.snap.AgentByPane[paneID] {
+	case agentRunning:
+		return styleRunning
+	case agentWaiting:
+		return styleWaiting
+	}
+	return styleClaude
+}
+
 // activePaneOf finds the active pane of a window, for its icon.
 func (m model) activePaneOf(session string, window int) *Pane {
 	for _, p := range m.snap.Panes[session] {
@@ -240,23 +252,25 @@ func (m model) renderRow(r row, selected bool) string {
 		}
 		var icon, name string
 		var isClaude bool
-		if r.SinglePane != nil {
+		pane := r.SinglePane
+		if pane != nil {
 			// A one-pane window IS its pane: render the pane, don't expand.
-			icon, name, isClaude = paneGlyph(*r.SinglePane)
+			icon, name, isClaude = paneGlyph(*pane)
 		} else {
 			icon, name = defaultIcon, r.Win.Name
 			if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
 				icon, _, isClaude = paneGlyph(*ap)
+				pane = ap
 			}
 		}
 		line := plain(m.foldMarker(r), " ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
-		if isClaude {
+		if isClaude && pane != nil {
 			prefix := indent + m.foldMarker(r) + " "
 			rest := truncate(name+mark, width-len([]rune(prefix))-2)
-			return prefix + styleClaude.Render(icon) + " " + rest
+			return prefix + m.claudeMark(pane.ID).Render(icon) + " " + rest
 		}
 		return truncate(line, width)
 
@@ -275,7 +289,7 @@ func (m model) renderRow(r row, selected bool) string {
 		if isClaude {
 			prefix := indent + "  "
 			rest := truncate(name+mark, width-len([]rune(prefix))-2)
-			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
+			return styleDim.Render(prefix) + m.claudeMark(r.Pane.ID).Render(icon) + " " + styleDim.Render(rest)
 		}
 		return styleDim.Render(truncate(line, width))
 	}
