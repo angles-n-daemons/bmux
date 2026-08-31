@@ -1,8 +1,10 @@
 package main
 
 import (
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -32,6 +34,9 @@ type snapshot struct {
 	Windows        map[string][]Window
 	Panes          map[string][]Pane // keyed by session
 	CurrentSession string
+	// Status is the first line of @bmux_status_cmd's output, shown
+	// right-aligned in the panel title bar (e.g. a cost/usage figure).
+	Status string
 }
 
 // gather builds a snapshot. It also upserts every live-session repo into the
@@ -44,12 +49,19 @@ func gather(discoveredRoots []string) snapshot {
 		allPanes []Pane
 		windows  map[string][]Window
 		current  string
+		status   string
 	)
 	parallel(
 		func() { sessions, _ = listSessions() },
 		func() { allPanes, _ = listAllPanes() },
 		func() { windows, _ = listAllWindows() },
 		func() { current = currentClientSession() },
+		func() {
+			if cmd := userOption("@bmux_status_cmd", ""); cmd != "" {
+				out, _ := exec.Command("/bin/sh", "-c", cmd).Output()
+				status = strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+			}
+		},
 	)
 
 	reg := loadRegistry()
@@ -168,6 +180,7 @@ func gather(discoveredRoots []string) snapshot {
 		Windows:        windows,
 		Panes:          panesBySession,
 		CurrentSession: current,
+		Status:         status,
 	}
 	saveSnapshotCache(snap)
 	return snap

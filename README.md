@@ -102,6 +102,13 @@ set -g @bmux_width 80    # columns
 set -g @bmux_width 30%   # of the window
 ```
 
+A status command's first output line renders right-aligned in the panel
+title bar, refreshed with the tree (make it cache itself if it's expensive):
+
+```tmux
+set -g @bmux_status_cmd '~/.tmux/scripts/claude-usage.sh'
+```
+
 ## Notes
 
 - Session ⇄ worktree matching is by path: a session belongs to a worktree

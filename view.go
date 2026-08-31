@@ -287,6 +287,11 @@ func (m model) View() string {
 	}
 	lines := make([]string, h)
 	lines[0] = styleTitle.Render(truncate(" bmux", w))
+	if s := m.snap.Status; s != "" {
+		if pad := w - len([]rune(" bmux")) - len([]rune(s)) - 1; pad > 0 {
+			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + styleDim.Render(s) + " "
+		}
+	}
 
 	// keep the cursor inside the viewport
 	visible := h - 2 // title + footer
