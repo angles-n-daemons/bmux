@@ -6,16 +6,20 @@ one tree, docked on the left, with Claude Code agent statuses inline.
 
 ```
  bmux                          Claude: $12.34
- cockroach
-   main [jasonranges]  bdillmann/goodhi…
-       roachdev*
-        ✳ Implement Jira ticket CRDB-661 ▶
-         zsh*
-   secondary ▶1  crdb-65148-wait-labels
+▾ cockroach
+  ▾ main [jasonranges]  bdillmann/goodhi…
+     ▾ $ roachdev*
+        * Implement Jira ticket CRDB-661 ▶
+        $ zsh*
+  ▸ secondary ▶1  crdb-65148-wait-labels
      mergebase  f0fc9e360
- env
-   main [tmuxfix] ⏹1  main
+▾ env
+  ▸ main [tmuxfix] ⏹1  main
 ```
+
+(Stand-in characters — the real panel renders nerd-font icons: folders for
+repos, chevrons for folds, per-command glyphs for windows and panes, and
+`✳` for Claude.)
 
 - One row per worktree: the main checkout is `main`, linked worktrees drop
   the repo prefix. Bright bold titles have a live session; grayed ones
