@@ -83,8 +83,9 @@ var (
 	styleWaiting  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	styleStopped  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleTitle    = lipgloss.NewStyle().Bold(true)
-	// Title-bar status (costs): the scheme's warm focus yellow.
-	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("#ffdb68"))
+	// Title-bar status (costs): Anthropic clay, same as the ✳ marks —
+	// it's Claude spend, so it wears Claude's color.
+	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
 	styleFooter   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	stylePrompt   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
 	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
