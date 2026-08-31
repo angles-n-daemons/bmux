@@ -317,7 +317,7 @@ func (m model) hintLine(width int) string {
 	if r := m.cur(); r != nil {
 		switch {
 		case r.Kind == rowRepo:
-			hints = "⏎ fold · a new worktree · ? help"
+			hints = "a new worktree · ? help"
 		case r.Kind == rowWorktree && r.WT.Session == nil:
 			hints = "⏎ start session · d remove · ? help"
 		case r.Kind == rowWorktree || r.Kind == rowSession:
