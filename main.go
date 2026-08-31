@@ -271,16 +271,19 @@ func cmdGo(dir string) error {
 	if dir == "prev" {
 		target = wins[(cur-1+len(wins))%len(wins)]
 	}
-	var resize, join []string
+	var join []string
+	panelID := ""
+	w := 0
 	if userOption("@bmux_open", "0") == "1" {
 		if id, win := findPanelPane(); id != "" && win != target {
-			// Size the (possibly never-displayed) destination to the client
-			// before joining, or the join width gets rescaled on switch.
-			resize = []string{"resize-window", "-A", "-t", target}
-			join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(target)), "-s", id, "-t", target}
+			panelID, w = id, panelWidth(target)
+			join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(w), "-s", id, "-t", target}
 		}
 	}
-	return tmuxSeq(resize, join, []string{"select-window", "-t", target})
+	if err := tmuxSeq([]string{"select-window", "-t", target}, join); err != nil {
+		return err
+	}
+	return correctPanelWidth(panelID, w)
 }
 
 func clientSession() string {
@@ -331,13 +334,15 @@ func jumpTo(session string, window, pane int) error {
 		destWin = activeWindowOf(session)
 	}
 
-	var resize, join []string
+	var join []string
+	panelID := ""
+	w := 0
 	if self := os.Getenv("TMUX_PANE"); self != "" && destWin != "" {
 		if out, _ := tmuxOut("show-options", "-pqv", "-t", self, "@bmux_panel"); strings.TrimSpace(out) == "1" {
 			ownWin, _ := tmuxOut("display-message", "-p", "-t", self, "#{window_id}")
-			if strings.TrimSpace(ownWin) != destWin {
-				resize = []string{"resize-window", "-A", "-t", destWin}
-				join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(panelWidth(destWin)), "-s", self, "-t", destWin}
+			if strings.TrimSpace(ownWin) != destWin && !windowShowsBmux(destWin) {
+				panelID, w = self, panelWidth(destWin)
+				join = []string{"join-pane", "-hbdf", "-l", strconv.Itoa(w), "-s", self, "-t", destWin}
 			}
 		}
 	}
@@ -349,7 +354,37 @@ func jumpTo(session string, window, pane int) error {
 			selPane = []string{"select-pane", "-t", fmt.Sprintf("=%s:%d.%d", session, window, pane)}
 		}
 	}
-	return tmuxSeq(resize, join, sel, selPane, []string{"switch-client", "-t", "=" + session})
+	if err := tmuxSeq(sel, selPane, []string{"switch-client", "-t", "=" + session}, join); err != nil {
+		return err
+	}
+	return correctPanelWidth(panelID, w)
+}
+
+// windowShowsBmux reports whether a window already contains a bmux pane
+// (e.g. the home full-screen tree) — the panel never docks next to one.
+func windowShowsBmux(win string) bool {
+	out, err := tmuxOut("list-panes", "-t", win, "-F", "#{pane_current_command}")
+	if err != nil {
+		return false
+	}
+	for _, cmd := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if cmd == "bmux" {
+			return true
+		}
+	}
+	return false
+}
+
+// correctPanelWidth snaps the panel to its intended width after a move.
+// Never-displayed windows keep a stale default size (80x24) until tmux
+// recalculates at the end of the command batch, so a join into one gets
+// proportionally rescaled; resize-pane fixes that without resize-window's
+// sticky manual-sizing side effect. No-op when the width already matches.
+func correctPanelWidth(panelID string, w int) error {
+	if panelID == "" || w <= 0 {
+		return nil
+	}
+	return tmuxRun("resize-pane", "-t", panelID, "-x", strconv.Itoa(w))
 }
 
 // cmdUp boots the full environment: a detached session for every worktree of
