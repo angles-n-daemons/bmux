@@ -100,7 +100,7 @@ func unstylePane() {
 	_ = tmuxRun("set-option", "-p", "-t", pane, "-u", "window-active-style")
 }
 
-// panelWidth is a quarter of the window, at least 40 columns, at most 40%.
+// panelWidth is 22% of the window, at least 40 columns, at most 40%.
 // Override with `set -g @bmux_width 80` (columns) or `set -g @bmux_width 30%`.
 func panelWidth(target string) int {
 	// Prefer the client width: background windows keep a stale default size
@@ -130,7 +130,7 @@ func panelWidth(target string) int {
 			return n
 		}
 	}
-	w := winW / 4
+	w := winW * 22 / 100
 	if w < 40 {
 		w = 40
 	}

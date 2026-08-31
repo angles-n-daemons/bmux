@@ -94,8 +94,8 @@ set -g @bmux_window_style 'bg=#261724,fg=#9cc9ad'         # blurred
 set -g @bmux_window_active_style 'bg=#152627,fg=#d4c39b'  # focused
 ```
 
-The panel opens at a quarter of the window width (at least 40 columns, at
-most 40%). Override with a column count or percentage:
+The panel opens at 22% of the window width (at least 40 columns, at most
+40%). Override with a column count or percentage:
 
 ```tmux
 set -g @bmux_width 80    # columns
