@@ -262,13 +262,16 @@ func (m model) renderRow(r row, selected bool) string {
 			mark = "*"
 		}
 		icon, name, isClaude := paneGlyph(*r.Pane)
-		line := plain(icon, " ", name, mark)
+		// Two-cell gutter (the fold-marker slot) so panes sit one visual
+		// step deeper than their window row.
+		line := plain("  ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
 		if isClaude {
-			rest := truncate(name+mark, width-len([]rune(indent))-3)
-			return styleDim.Render(indent) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
+			prefix := indent + "  "
+			rest := truncate(name+mark, width-len([]rune(prefix))-2)
+			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest)
 		}
 		return styleDim.Render(truncate(line, width))
 	}
