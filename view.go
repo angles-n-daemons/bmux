@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/angles-n-daemons/bmux/modal"
 )
 
 // Nerd-font glyphs per foreground command; Claude panes are detected via
@@ -310,29 +312,34 @@ func (m model) View() string {
 // modalView renders the centered pop-up for prompt/confirm/busy modes.
 func (m model) modalView() string {
 	boxW := m.width - 6
-	if boxW > 46 {
-		boxW = 46
+	if boxW > 48 {
+		boxW = 48
 	}
-	if boxW < 20 {
-		boxW = 20
+	if boxW < 22 {
+		boxW = 22
 	}
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		Width(boxW)
-
 	switch m.mode {
 	case modePrompt:
-		return box.BorderForeground(lipgloss.Color("3")).Render(
-			stylePrompt.Render("new worktree") + "\n" +
-				m.input + "▎\n" +
-				styleFooter.Render("⏎ create · esc cancel · empty = auto"))
+		title := "New worktree"
+		if m.promptRepo != "" {
+			title += " · " + filepath.Base(m.promptRepo)
+		}
+		return modal.Input(modal.Opts{
+			Width: boxW, Title: title,
+			Footer: "⏎ create · esc cancel · empty = auto",
+			Accent: lipgloss.Color("3"),
+		}, m.input)
 	case modeConfirm:
-		return box.BorderForeground(lipgloss.Color("1")).Render(
-			m.confirmMsg + "\n" +
-				styleFooter.Render("y confirm · any other key cancels"))
+		return modal.Confirm(modal.Opts{
+			Width: boxW, Title: m.confirmTitle,
+			Footer: "y confirm · n cancel",
+			Accent: lipgloss.Color("1"),
+		}, m.confirmMsg)
 	case modeBusy:
-		return box.BorderForeground(lipgloss.Color("3")).Render(m.busyMsg)
+		return modal.Notice(modal.Opts{
+			Width: boxW, Title: "Working",
+			Accent: lipgloss.Color("3"),
+		}, m.busyMsg)
 	}
 	return ""
 }

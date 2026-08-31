@@ -87,8 +87,9 @@ type model struct {
 	mode       mode
 	promptRepo string // main root the pending `a` applies to
 	input      string
-	confirmMsg string
-	confirmFn  func() tea.Msg
+	confirmTitle string
+	confirmMsg   string
+	confirmFn    func() tea.Msg
 	busyMsg    string
 	footer     string
 
@@ -467,6 +468,7 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 		}
 		root := g.Root
 		m.mode = modeConfirm
+		m.confirmTitle = "Unpin repo"
 		m.confirmMsg = fmt.Sprintf("unpin %s from bmux?", g.Name)
 		m.confirmFn = func() tea.Msg {
 			reg := loadRegistry()
@@ -483,6 +485,7 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 		case w.WT.IsMain:
 			sess := w.Session.Name
 			m.mode = modeConfirm
+			m.confirmTitle = "Kill session"
 			m.confirmMsg = fmt.Sprintf("kill session %s? (main checkout is never removed)", sess)
 			m.confirmFn = func() tea.Msg {
 				if err := killSess(sess); err != nil {
@@ -498,6 +501,7 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 			}
 			backend := m.backend
 			m.mode = modeConfirm
+			m.confirmTitle = "Delete worktree"
 			if sess != "" {
 				m.confirmMsg = fmt.Sprintf("kill session %s AND remove worktree %s?", sess, name)
 			} else {
@@ -518,6 +522,7 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 	case rowSession:
 		sess := r.Sess.Session.Name
 		m.mode = modeConfirm
+		m.confirmTitle = "Kill session"
 		m.confirmMsg = fmt.Sprintf("kill session %s?", sess)
 		m.confirmFn = func() tea.Msg {
 			if err := killSess(sess); err != nil {
