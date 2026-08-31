@@ -144,6 +144,10 @@ func gather(discoveredRoots []string) snapshot {
 			g.Worktrees = append(g.Worktrees, row)
 		}
 		sort.Slice(g.Worktrees, func(i, j int) bool {
+			// Main worktree first, then linked worktrees alphabetically.
+			if g.Worktrees[i].WT.IsMain != g.Worktrees[j].WT.IsMain {
+				return g.Worktrees[i].WT.IsMain
+			}
 			return filepath.Base(g.Worktrees[i].WT.Path) < filepath.Base(g.Worktrees[j].WT.Path)
 		})
 		groups = append(groups, g)

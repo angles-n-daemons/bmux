@@ -170,8 +170,11 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Kind == rowWorktree {
 			base := filepath.Base(r.WT.WT.Path)
 			name = base
-			// Drop the redundant repo prefix (cockroach-primary → primary).
-			if r.Repo != nil && r.Repo.Root != "" {
+			if r.WT.WT.IsMain {
+				// Git's term for the primary checkout; avoids repo → repo.
+				name = "main"
+			} else if r.Repo != nil && r.Repo.Root != "" {
+				// Drop the redundant repo prefix (cockroach-primary → primary).
 				if t := strings.TrimPrefix(name, r.Repo.Name+"-"); t != "" {
 					name = t
 				}
