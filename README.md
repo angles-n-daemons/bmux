@@ -2,7 +2,8 @@
 
 A neotree-style session navigator for tmux. bmux shows every repo you work
 in, every git worktree inside it, and the tmux session attached to each —
-one tree, docked on the left, with Claude Code agent statuses inline.
+one tree, docked on the left, with coding-agent statuses (Claude Code and
+Codex) inline.
 
 ```
  bmux                          Claude: $12.34
@@ -18,8 +19,8 @@ one tree, docked on the left, with Claude Code agent statuses inline.
 ```
 
 (Stand-in characters — the real panel renders nerd-font icons: folders for
-repos, chevrons for folds, per-command glyphs for windows and panes, and
-`✳` for Claude.)
+repos, chevrons for folds, per-command glyphs for windows and panes, `✳`
+in clay for Claude, and `✦` in green for Codex.)
 
 - One row per worktree: the main checkout is `main`, linked worktrees drop
   the repo prefix. Bright bold titles have a live session; grayed ones
@@ -141,7 +142,14 @@ set -g @bmux_status_cmd '~/.tmux/scripts/claude-usage.sh'
 
 ## Agent status detection
 
-Ported from [tmux-agent-statuses](https://github.com/angles-n-daemons/tmux-agent-statuses):
-Claude Code sets pane titles to `✳ <name>` when idle and a braille spinner
-while working; an idle pane whose recent lines show a permission prompt
-(`❯ Allow` / `❯ Deny` / numbered options) counts as waiting.
+Two agents are recognised, each with its own icon (`✳` clay for Claude, `✦`
+green for Codex) and a shared `▶`/`⏸`/`⏹` running/waiting/stopped badge.
+
+**Claude Code** (ported from [tmux-agent-statuses](https://github.com/angles-n-daemons/tmux-agent-statuses)):
+sets pane titles to `✳ <name>` when idle and a braille spinner while working;
+an idle pane whose recent lines show a permission prompt (`❯ Allow` / `❯ Deny`
+/ numbered options) counts as waiting.
+
+**Codex** is identified by its foreground command (`codex`) and reports its
+state through the pane title: a leading braille spinner means it's working,
+and the literal `Action Required` means it's blocked on an approval prompt.

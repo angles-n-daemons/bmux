@@ -37,8 +37,8 @@ type snapshot struct {
 	// Status is the first line of @bmux_status_cmd's output, shown
 	// right-aligned in the panel title bar (e.g. a cost/usage figure).
 	Status string
-	// AgentByPane maps pane ids to their Claude agent status, coloring
-	// each pane's ✳ mark by state.
+	// AgentByPane maps pane ids to their coding-agent status (Claude or
+	// Codex), coloring each pane's agent mark by state.
 	AgentByPane map[string]agentStatus
 }
 

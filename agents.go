@@ -5,9 +5,14 @@ import (
 	"strings"
 )
 
-// Claude Code agent detection, ported from tmux-agent-statuses:
-// pane titles start with ✳ (idle) or a braille spinner (working); an idle
-// pane whose recent content shows a permission prompt is "waiting".
+// Coding-agent detection. Two agents are recognised:
+//
+//   - Claude Code, ported from tmux-agent-statuses: pane titles start with ✳
+//     (idle) or a braille spinner (working); an idle pane whose recent content
+//     shows a permission prompt is "waiting".
+//   - Codex: identified by its foreground command ("codex"). It carries its
+//     state in the pane title — a leading braille spinner while working and the
+//     literal "Action Required" when it needs approval.
 
 type agentStatus int
 
@@ -16,6 +21,44 @@ const (
 	agentWaiting
 	agentRunning
 )
+
+type agentKind int
+
+const (
+	agentNone agentKind = iota
+	agentClaude
+	agentCodex
+)
+
+// agentOf identifies the coding agent running in a pane, returning its kind and
+// a display name. Codex is checked first: while it works its title also carries
+// a braille spinner, which would otherwise look like Claude's marker.
+func agentOf(p Pane) (agentKind, string) {
+	if p.Command == "codex" {
+		return agentCodex, "codex"
+	}
+	if name, ok := claudeTitleName(p.Title); ok && !shellCommands[p.Command] {
+		if name == "" || name == "Claude Code" {
+			name = "claude"
+		}
+		return agentClaude, name
+	}
+	return agentNone, ""
+}
+
+// codexStatus reads Codex's state straight from its pane title — no capture
+// needed: "Action Required" means it's blocked on approval, a leading braille
+// spinner means it's working, otherwise it's idle.
+func codexStatus(p Pane) agentStatus {
+	if strings.Contains(p.Title, "Action Required") {
+		return agentWaiting
+	}
+	runes := []rune(p.Title)
+	if len(runes) > 0 && isSpinner(runes[0]) {
+		return agentRunning
+	}
+	return agentStopped
+}
 
 const brailleSpinners = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠁⠂⠄⠈⠐⠠"
 
@@ -43,30 +86,35 @@ func claudeTitleName(title string) (string, bool) {
 func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatus) {
 	result := map[string][]agentStatus{}
 	byPane := map[string]agentStatus{}
-	var candidates []Pane
+	type candidate struct {
+		p    Pane
+		kind agentKind
+	}
+	var candidates []candidate
 	for _, p := range panes {
-		if _, ok := claudeTitleName(p.Title); !ok {
-			continue
+		if kind, _ := agentOf(p); kind != agentNone {
+			candidates = append(candidates, candidate{p, kind})
 		}
-		if shellCommands[p.Command] {
-			continue // agent exited, foreground reverted to a shell
-		}
-		candidates = append(candidates, p)
 	}
 
-	// capture-pane per idle agent is the slow part; run them concurrently.
+	// capture-pane per idle Claude agent is the slow part; run them
+	// concurrently. Codex reports its state via the title, so it's instant.
 	statuses := make([]agentStatus, len(candidates))
 	var fns []func()
 	for i := range candidates {
 		i := i
 		fns = append(fns, func() {
-			p := candidates[i]
-			if strings.ContainsAny(p.Title, brailleSpinners) {
+			c := candidates[i]
+			if c.kind == agentCodex {
+				statuses[i] = codexStatus(c.p)
+				return
+			}
+			if strings.ContainsAny(c.p.Title, brailleSpinners) {
 				statuses[i] = agentRunning
 				return
 			}
 			statuses[i] = agentStopped
-			for _, line := range strings.Split(capturePane(p.ID, 15), "\n") {
+			for _, line := range strings.Split(capturePane(c.p.ID, 15), "\n") {
 				if strings.Contains(line, "⏵⏵") {
 					continue // Claude Code statusline hints
 				}
@@ -78,9 +126,9 @@ func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatu
 		})
 	}
 	parallel(fns...)
-	for i, p := range candidates {
-		result[p.Session] = append(result[p.Session], statuses[i])
-		byPane[p.ID] = statuses[i]
+	for i, c := range candidates {
+		result[c.p.Session] = append(result[c.p.Session], statuses[i])
+		byPane[c.p.ID] = statuses[i]
 	}
 	for _, statuses := range result {
 		sortAgentStatuses(statuses)

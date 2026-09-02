@@ -52,22 +52,29 @@ var commandIcons = map[string]string{
 	"man": iconBook, "less": iconBook, "bat": iconBook,
 }
 
-var styleClaude = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
+const (
+	iconClaude = "✳" // eight-spoked asterisk (Anthropic clay)
+	iconCodex  = "✦" // four-pointed star (OpenAI green)
+)
 
-// paneGlyph returns the icon (plain glyph), display name, and whether this
-// is a Claude pane (for styling).
-func paneGlyph(p Pane) (icon, name string, isClaude bool) {
-	if title, ok := claudeTitleName(p.Title); ok && !shellCommands[p.Command] {
-		name = title
-		if name == "" || name == "Claude Code" {
-			name = "claude"
-		}
-		return "✳", name, true
+var (
+	styleClaude = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
+	styleCodex  = lipgloss.NewStyle().Foreground(lipgloss.Color("#10a37f"))
+)
+
+// paneGlyph returns the icon (plain glyph), display name, the accent style for
+// agent panes, and whether this pane is a coding agent (Claude or Codex).
+func paneGlyph(p Pane) (icon, name string, accent lipgloss.Style, isAgent bool) {
+	switch kind, n := agentOf(p); kind {
+	case agentClaude:
+		return iconClaude, n, styleClaude, true
+	case agentCodex:
+		return iconCodex, n, styleCodex, true
 	}
 	if ic, ok := commandIcons[p.Command]; ok {
-		return ic, p.Command, false
+		return ic, p.Command, lipgloss.Style{}, false
 	}
-	return defaultIcon, p.Command, false
+	return defaultIcon, p.Command, lipgloss.Style{}, false
 }
 
 var (
@@ -279,17 +286,18 @@ func (m model) renderRow(r row, selected bool) string {
 			mark = "*"
 		}
 		var icon, name, badge string
-		var isClaude bool
+		var accent lipgloss.Style
+		var isAgent bool
 		if r.SinglePane != nil {
 			// A one-pane window IS its pane: render the pane, don't expand.
-			icon, name, isClaude = paneGlyph(*r.SinglePane)
-			if isClaude {
+			icon, name, accent, isAgent = paneGlyph(*r.SinglePane)
+			if isAgent {
 				badge = m.paneBadge(r.SinglePane.ID)
 			}
 		} else {
 			icon, name = defaultIcon, r.Win.Name
 			if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
-				icon, _, isClaude = paneGlyph(*ap)
+				icon, _, accent, isAgent = paneGlyph(*ap)
 			}
 			if !m.isExpanded(r) {
 				badge = agentBadge(m.windowAgents(r.Win.Session, r.Win.Index))
@@ -300,10 +308,10 @@ func (m model) renderRow(r row, selected bool) string {
 			return styleCursor.Render(truncate(line, width))
 		}
 		room := width - lipgloss.Width(badge)
-		if isClaude {
+		if isAgent {
 			prefix := indent + m.foldMarker(r) + " "
 			rest := truncate(name+mark, room-len([]rune(prefix))-2)
-			return prefix + styleClaude.Render(icon) + " " + rest + badge
+			return prefix + accent.Render(icon) + " " + rest + badge
 		}
 		return truncate(line, room) + badge
 
@@ -312,9 +320,9 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Pane.Active {
 			mark = "*"
 		}
-		icon, name, isClaude := paneGlyph(*r.Pane)
+		icon, name, accent, isAgent := paneGlyph(*r.Pane)
 		badge := ""
-		if isClaude {
+		if isAgent {
 			badge = m.paneBadge(r.Pane.ID)
 		}
 		// Two-cell gutter (the fold-marker slot) so panes sit one visual
@@ -324,10 +332,10 @@ func (m model) renderRow(r row, selected bool) string {
 			return styleCursor.Render(truncate(line, width))
 		}
 		room := width - lipgloss.Width(badge)
-		if isClaude {
+		if isAgent {
 			prefix := indent + "  "
 			rest := truncate(name+mark, room-len([]rune(prefix))-2)
-			return styleDim.Render(prefix) + styleClaude.Render(icon) + " " + styleDim.Render(rest) + badge
+			return styleDim.Render(prefix) + accent.Render(icon) + " " + styleDim.Render(rest) + badge
 		}
 		return styleDim.Render(truncate(line, width))
 	}
