@@ -528,14 +528,9 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 			broken := isBrokenWorktree(path)
 			m.mode = modeConfirm
 			m.confirmTitle = "Delete worktree"
-			switch {
-			case broken && sess != "":
-				m.confirmMsg = fmt.Sprintf("kill session %s AND clean up broken worktree %s?", sess, name)
-			case broken:
-				m.confirmMsg = fmt.Sprintf("clean up broken worktree %s? (git link is severed)", name)
-			case sess != "":
+			if sess != "" {
 				m.confirmMsg = fmt.Sprintf("kill session %s AND remove worktree %s?", sess, name)
-			default:
+			} else {
 				m.confirmMsg = fmt.Sprintf("remove worktree %s?", name)
 			}
 			m.confirmFn = func() tea.Msg {
