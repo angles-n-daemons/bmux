@@ -56,6 +56,9 @@ func (roachdevBackend) Remove(mainRoot, path, name string, force bool) error {
 		args = append(args, "-f")
 	}
 	if err := exec.Command("roachdev", args...).Run(); err != nil {
+		if force {
+			return hardRemoveWorktree(mainRoot, path, commandError("roachdev wt rm", err))
+		}
 		return commandError("roachdev wt rm", err)
 	}
 	return nil
@@ -131,12 +134,32 @@ func (gitBackend) Remove(mainRoot, path, name string, force bool) error {
 	}
 	args = append(args, path)
 	if err := exec.Command("git", args...).Run(); err != nil {
+		if force {
+			return hardRemoveWorktree(mainRoot, path, commandError("git worktree remove", err))
+		}
 		return commandError("git worktree remove", err)
 	}
 	return nil
 }
 
 func (gitBackend) DiscoverRoots() []string { return nil }
+
+// hardRemoveWorktree cleans up a worktree the normal remove command can't
+// touch even with force — e.g. a prunable worktree whose gitdir link is
+// severed (`git worktree remove` fails validation because the worktree's .git
+// no longer exists, yet the directory survives on disk). It prunes the stale
+// administrative entry and deletes the leftover directory directly. origErr is
+// returned only if the directory itself cannot be removed.
+func hardRemoveWorktree(mainRoot, path string, origErr error) error {
+	if path == "" {
+		return origErr
+	}
+	exec.Command("git", "-C", mainRoot, "worktree", "prune").Run()
+	if err := os.RemoveAll(path); err != nil {
+		return origErr
+	}
+	return nil
+}
 
 func commandError(what string, err error) error {
 	if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {

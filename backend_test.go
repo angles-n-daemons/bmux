@@ -85,6 +85,36 @@ func TestGitBackendDirtyRemoveNeedsForce(t *testing.T) {
 	}
 }
 
+func TestGitBackendForceRemovesBrokenWorktree(t *testing.T) {
+	repo := initTestRepo(t)
+	t.Setenv("BMUX_WORKTREE_DIR", t.TempDir())
+
+	var b gitBackend
+	path, err := b.Create(repo, "broken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sever the gitdir link: the worktree's directory survives on disk but its
+	// .git file is gone. git marks it prunable and `git worktree remove` fails
+	// validation even with --force — the real-world half-deleted worktree case.
+	if err := os.Remove(filepath.Join(path, ".git")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Remove(repo, path, "broken", true); err != nil {
+		t.Fatalf("force removal of a broken worktree failed: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("broken worktree directory should be gone after force removal")
+	}
+	// The stale administrative entry must be pruned too.
+	for _, wt := range repoWorktrees(repo) {
+		if wt.Path == path {
+			t.Fatalf("broken worktree still listed after removal: %s", path)
+		}
+	}
+}
+
 func TestGitBackendAutoName(t *testing.T) {
 	repo := initTestRepo(t)
 	t.Setenv("BMUX_WORKTREE_DIR", t.TempDir())
