@@ -529,7 +529,7 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 			m.mode = modeConfirm
 			m.confirmTitle = "Delete worktree"
 			if sess != "" {
-				m.confirmMsg = fmt.Sprintf("kill session %s AND remove worktree %s?", sess, name)
+				m.confirmMsg = fmt.Sprintf("kill session %s?", sess)
 			} else {
 				m.confirmMsg = fmt.Sprintf("remove worktree %s?", name)
 			}
