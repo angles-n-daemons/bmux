@@ -525,11 +525,17 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 				sess = w.Session.Name
 			}
 			backend := m.backend
+			broken := isBrokenWorktree(path)
 			m.mode = modeConfirm
 			m.confirmTitle = "Delete worktree"
-			if sess != "" {
+			switch {
+			case broken && sess != "":
+				m.confirmMsg = fmt.Sprintf("kill session %s AND clean up broken worktree %s?", sess, name)
+			case broken:
+				m.confirmMsg = fmt.Sprintf("clean up broken worktree %s? (git link is severed)", name)
+			case sess != "":
 				m.confirmMsg = fmt.Sprintf("kill session %s AND remove worktree %s?", sess, name)
-			} else {
+			default:
 				m.confirmMsg = fmt.Sprintf("remove worktree %s?", name)
 			}
 			m.confirmFn = func() tea.Msg {
@@ -537,6 +543,15 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 					if err := killSess(sess); err != nil {
 						return actionDoneMsg{err: err}
 					}
+				}
+				// A broken worktree (severed .git) has no recoverable changes —
+				// clean it up in one step rather than bouncing through a second
+				// "changes will be lost" confirm.
+				if broken {
+					if err := backend.Remove(root, path, name, true); err != nil {
+						return actionDoneMsg{err: err}
+					}
+					return actionDoneMsg{notice: "removed " + name}
 				}
 				err := backend.Remove(root, path, name, false)
 				// Some backends "skip" dirty worktrees without failing
