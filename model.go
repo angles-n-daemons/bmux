@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -68,11 +67,6 @@ type (
 	actionDoneMsg struct {
 		err    error
 		notice string
-	}
-	// forceOfferMsg re-prompts when a worktree removal didn't take
-	// (dirty tree): confirm again, then remove with force.
-	forceOfferMsg struct {
-		root, path, name, reason string
 	}
 )
 
@@ -163,18 +157,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case discoverMsg:
 		m.discoveredRoots = msg.roots
 		return m, m.refreshCmd()
-	case forceOfferMsg:
-		backend := m.backend
-		m.mode = modeConfirm
-		m.confirmTitle = "Force delete"
-		m.confirmMsg = fmt.Sprintf("%s: %s — force remove? uncommitted changes will be lost", msg.name, msg.reason)
-		m.confirmFn = func() tea.Msg {
-			if err := backend.Remove(msg.root, msg.path, msg.name, true); err != nil {
-				return actionDoneMsg{err: err}
-			}
-			return actionDoneMsg{notice: "removed " + msg.name}
-		}
-		return m, nil
 	case actionDoneMsg:
 		m.mode = modeNormal
 		if msg.err != nil {
@@ -525,7 +507,6 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 				sess = w.Session.Name
 			}
 			backend := m.backend
-			broken := isBrokenWorktree(path)
 			m.mode = modeConfirm
 			m.confirmTitle = "Delete worktree"
 			if sess != "" {
@@ -533,32 +514,17 @@ func (m model) startDelete() (tea.Model, tea.Cmd) {
 			} else {
 				m.confirmMsg = fmt.Sprintf("remove worktree %s?", name)
 			}
+			// One confirm, then force-remove. Worktrees are disposable, so from
+			// the user's perspective "delete" means delete — no second "changes
+			// will be lost" prompt. Force also avoids the non-force path, whose
+			// dirty-skip can stall for seconds on a built tree. Session first.
 			m.confirmFn = func() tea.Msg {
 				if sess != "" {
 					if err := killSess(sess); err != nil {
 						return actionDoneMsg{err: err}
 					}
 				}
-				// A broken worktree (severed .git) has no recoverable changes —
-				// clean it up in one step rather than bouncing through a second
-				// "changes will be lost" confirm.
-				if broken {
-					if err := backend.Remove(root, path, name, true); err != nil {
-						return actionDoneMsg{err: err}
-					}
-					return actionDoneMsg{notice: "removed " + name}
-				}
-				err := backend.Remove(root, path, name, false)
-				// Some backends "skip" dirty worktrees without failing
-				// (roachdev warns and exits 0) — trust the filesystem.
-				if _, statErr := os.Stat(path); statErr == nil {
-					reason := "has uncommitted changes"
-					if err != nil {
-						reason = err.Error()
-					}
-					return forceOfferMsg{root: root, path: path, name: name, reason: reason}
-				}
-				if err != nil {
+				if err := backend.Remove(root, path, name, true); err != nil {
 					return actionDoneMsg{err: err}
 				}
 				return actionDoneMsg{notice: "removed " + name}

@@ -84,13 +84,13 @@ func TestModelDeleteFlowBrokenWorktree(t *testing.T) {
 		expanded: map[string]bool{},
 	}
 
-	// d -> a single confirm (broken worktrees skip the force re-prompt)
+	// d -> a single confirm (delete is always one confirm, then force-remove)
 	nm, _ := m.startDelete()
 	m = nm.(model)
 	if m.mode != modeConfirm {
 		t.Fatalf("after d, want modeConfirm, got %v", m.mode)
 	}
-	// y on the confirm -> should remove in one step, no forceOfferMsg
+	// y on the confirm -> should remove in one step, no second prompt
 	msg := m.confirmFn()
 	done, ok := msg.(actionDoneMsg)
 	if !ok {

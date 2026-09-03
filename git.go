@@ -41,15 +41,6 @@ func repoMainRoot(toplevel string) string {
 	return common // bare-ish edge; better than nothing
 }
 
-// isBrokenWorktree reports whether a worktree's git link is severed — its
-// top-level .git (a file for linked worktrees) is gone, so git treats the
-// entry as prunable and `git worktree remove` / `roachdev wt rm` refuse it
-// even with force. There are no tracked changes left to preserve.
-func isBrokenWorktree(path string) bool {
-	_, err := os.Stat(filepath.Join(path, ".git"))
-	return os.IsNotExist(err)
-}
-
 // repoWorktrees lists all checkouts of the repo rooted at mainRoot. The first
 // entry reported by git is the main checkout.
 func repoWorktrees(mainRoot string) []Worktree {

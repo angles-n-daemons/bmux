@@ -1,12 +1,31 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// removeTimeout bounds a worktree removal so a wedged backend command can never
+// freeze the panel on "working…". A built cockroach worktree with submodules
+// can legitimately take a while, so the bound is generous.
+const removeTimeout = 3 * time.Minute
+
+// runRemove runs a removal command under removeTimeout, turning a hang into a
+// clear timeout error instead of a stuck UI.
+func runRemove(name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), removeTimeout)
+	defer cancel()
+	err := exec.CommandContext(ctx, name, args...).Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("timed out after %s", removeTimeout)
+	}
+	return err
+}
 
 // worktreeBackend abstracts worktree creation/removal so bmux works with or
 // without roachdev installed.
@@ -55,7 +74,7 @@ func (roachdevBackend) Remove(mainRoot, path, name string, force bool) error {
 	if force {
 		args = append(args, "-f")
 	}
-	if err := exec.Command("roachdev", args...).Run(); err != nil {
+	if err := runRemove("roachdev", args...); err != nil {
 		if force {
 			return hardRemoveWorktree(mainRoot, path, commandError("roachdev wt rm", err))
 		}
@@ -133,7 +152,7 @@ func (gitBackend) Remove(mainRoot, path, name string, force bool) error {
 		args = append(args, "--force")
 	}
 	args = append(args, path)
-	if err := exec.Command("git", args...).Run(); err != nil {
+	if err := runRemove("git", args...); err != nil {
 		if force {
 			return hardRemoveWorktree(mainRoot, path, commandError("git worktree remove", err))
 		}
