@@ -40,6 +40,9 @@ type snapshot struct {
 	// AgentByPane maps pane ids to their coding-agent status (Claude or
 	// Codex), coloring each pane's agent mark by state.
 	AgentByPane map[string]agentStatus
+	// AgentKindByPane maps pane ids to which agent runs there (Claude vs
+	// Codex), picking each pane's icon.
+	AgentKindByPane map[string]agentKind
 }
 
 // gather builds a snapshot. It also upserts every live-session repo into the
@@ -111,7 +114,7 @@ func gather(discoveredRoots []string) snapshot {
 		sort.Slice(ss, func(i, j int) bool { return ss[i].Name < ss[j].Name })
 	}
 
-	agents, agentsByPane := detectAgents(allPanes)
+	agents, agentsByPane, agentKinds := detectAgents(allPanes)
 	panesBySession := map[string][]Pane{}
 	for _, p := range allPanes {
 		if p.Command == "bmux" {
@@ -179,12 +182,13 @@ func gather(discoveredRoots []string) snapshot {
 	}
 
 	snap := snapshot{
-		Repos:          groups,
-		Windows:        windows,
-		Panes:          panesBySession,
-		CurrentSession: current,
-		Status:         status,
-		AgentByPane:    agentsByPane,
+		Repos:           groups,
+		Windows:         windows,
+		Panes:           panesBySession,
+		CurrentSession:  current,
+		Status:          status,
+		AgentByPane:     agentsByPane,
+		AgentKindByPane: agentKinds,
 	}
 	saveSnapshotCache(snap)
 	return snap

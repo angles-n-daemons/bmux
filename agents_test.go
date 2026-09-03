@@ -2,27 +2,56 @@ package main
 
 import "testing"
 
-func TestAgentOf(t *testing.T) {
+func TestClassifyCommand(t *testing.T) {
 	cases := []struct {
-		name     string
-		pane     Pane
-		wantKind agentKind
-		wantName string
+		cmd  string
+		want agentKind
 	}{
-		{"claude idle", Pane{Title: "✳ Fix the bug", Command: "claude"}, agentClaude, "Fix the bug"},
-		{"claude running", Pane{Title: "⠹ Fix the bug", Command: "roachdev"}, agentClaude, "Fix the bug"},
-		{"claude reverted to shell", Pane{Title: "✳ Fix the bug", Command: "zsh"}, agentNone, ""},
-		{"codex idle", Pane{Title: "bmux", Command: "codex"}, agentCodex, "codex"},
-		{"codex running", Pane{Title: "⠧ bmux", Command: "codex"}, agentCodex, "codex"},
-		{"codex waiting", Pane{Title: "[ . ] Action Required | bmux", Command: "codex"}, agentCodex, "codex"},
-		{"plain shell", Pane{Title: "Brians-MacBook-Pro.local", Command: "zsh"}, agentNone, ""},
-		{"vim", Pane{Title: "somefile.go", Command: "vim"}, agentNone, ""},
+		{"roachdev claude --safe --", agentClaude},
+		{"roachdev codex", agentCodex},
+		{"claude --settings /tmp/x.json --model opus", agentClaude},
+		{"codex --config shell_environment_policy.exclude=[]", agentCodex},
+		{"/Users/b/.codex/packages/standalone/releases/0.1/codex-abc", agentCodex},
+		{"/Users/b/go/bin/roachdev codex", agentCodex},
+		{"-zsh", agentNone},
+		{"caffeinate -i -t 300", agentNone},
+		{"vim main.go", agentNone},
+		{"roachdev wt list", agentNone},
+		{"", agentNone},
 	}
 	for _, c := range cases {
-		gotKind, gotName := agentOf(c.pane)
-		if gotKind != c.wantKind || gotName != c.wantName {
-			t.Errorf("%s: agentOf = (%v, %q), want (%v, %q)", c.name, gotKind, gotName, c.wantKind, c.wantName)
+		if got := classifyCommand(c.cmd); got != c.want {
+			t.Errorf("classifyCommand(%q) = %v, want %v", c.cmd, got, c.want)
 		}
+	}
+}
+
+func TestAgentKindsByPane(t *testing.T) {
+	// Two panes, each a zsh hosting a roachdev-wrapped agent (grandchild is the
+	// real binary) — the shape seen live. A third pane is a plain shell.
+	table := map[int]procInfo{
+		100: {ppid: 1, kind: agentNone},     // pane A: zsh
+		101: {ppid: 100, kind: agentClaude}, // roachdev claude
+		102: {ppid: 101, kind: agentClaude}, // claude binary
+		200: {ppid: 1, kind: agentNone},     // pane B: zsh
+		201: {ppid: 200, kind: agentCodex},  // roachdev codex
+		202: {ppid: 201, kind: agentCodex},  // codex binary
+		300: {ppid: 1, kind: agentNone},     // pane C: plain zsh
+	}
+	panes := []Pane{
+		{ID: "%a", PID: 100},
+		{ID: "%b", PID: 200},
+		{ID: "%c", PID: 300},
+	}
+	kinds := agentKindsByPane(panes, table)
+	if kinds["%a"] != agentClaude {
+		t.Errorf("pane A = %v, want claude", kinds["%a"])
+	}
+	if kinds["%b"] != agentCodex {
+		t.Errorf("pane B = %v, want codex", kinds["%b"])
+	}
+	if _, ok := kinds["%c"]; ok {
+		t.Errorf("plain shell pane should not be an agent")
 	}
 }
 
@@ -31,42 +60,34 @@ func TestCodexStatus(t *testing.T) {
 		title string
 		want  agentStatus
 	}{
-		{"bmux", agentStopped},
-		{"⠧ bmux", agentRunning},
+		{"cockroach-oncall", agentStopped},
+		{"⠧ Analyze disk usage on macOS", agentRunning},
 		{"⠇ bmux", agentRunning},
-		{"[ . ] Action Required | bmux", agentWaiting},
+		{"[ . ] Action Required | cockroach-oncall", agentWaiting},
 	}
 	for _, c := range cases {
-		if got := codexStatus(Pane{Title: c.title, Command: "codex"}); got != c.want {
+		if got := codexStatus(Pane{Title: c.title}); got != c.want {
 			t.Errorf("codexStatus(%q) = %v, want %v", c.title, got, c.want)
 		}
 	}
 }
 
-// A running Codex title carries a braille spinner too; it must not be
-// misread as Claude.
-func TestCodexNotMistakenForClaude(t *testing.T) {
-	p := Pane{Title: "⠧ bmux", Command: "codex"}
-	if kind, _ := agentOf(p); kind != agentCodex {
-		t.Fatalf("spinning codex classified as %v, want agentCodex", kind)
+func TestAgentDisplayName(t *testing.T) {
+	cases := []struct {
+		kind  agentKind
+		title string
+		want  string
+	}{
+		{agentClaude, "✳ Fix the bug", "Fix the bug"},
+		{agentClaude, "⠹ Fix the bug", "Fix the bug"},
+		{agentClaude, "plain", "claude"},
+		{agentCodex, "⠐ Analyze disk usage on macOS", "Analyze disk usage on macOS"},
+		{agentCodex, "cockroach-oncall", "codex"},
+		{agentCodex, "[ . ] Action Required | cockroach-oncall", "codex"},
 	}
-}
-
-func TestDetectAgentsMixed(t *testing.T) {
-	panes := []Pane{
-		{ID: "%1", Session: "s1", Title: "⠧ bmux", Command: "codex"},                       // codex running
-		{ID: "%2", Session: "s1", Title: "[ . ] Action Required | env", Command: "codex"},   // codex waiting
-		{ID: "%3", Session: "s2", Title: "✳ Fix the bug", Command: "claude"},                // claude idle -> stopped
-		{ID: "%4", Session: "s2", Title: "Brians-MacBook-Pro.local", Command: "zsh"},        // not an agent
-	}
-	_, byPane := detectAgents(panes)
-	if byPane["%1"] != agentRunning {
-		t.Errorf("codex running pane = %v", byPane["%1"])
-	}
-	if byPane["%2"] != agentWaiting {
-		t.Errorf("codex waiting pane = %v", byPane["%2"])
-	}
-	if _, ok := byPane["%4"]; ok {
-		t.Errorf("non-agent pane should not be tracked")
+	for _, c := range cases {
+		if got := agentDisplayName(c.kind, c.title); got != c.want {
+			t.Errorf("agentDisplayName(%v, %q) = %q, want %q", c.kind, c.title, got, c.want)
+		}
 	}
 }

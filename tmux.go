@@ -33,6 +33,7 @@ type Pane struct {
 	Title   string
 	Command string
 	Active  bool
+	PID     int // foreground process; root for agent process-tree detection
 }
 
 // tmuxCmd builds a tmux invocation, honoring BMUX_SOCKET for scratch-server
@@ -123,21 +124,22 @@ func listAllWindows() (map[string][]Window, error) {
 func listAllPanes() ([]Pane, error) {
 	out, err := tmuxOut("list-panes", "-a", "-F",
 		"#{session_name}"+sep+"#{window_index}"+sep+"#{pane_index}"+sep+"#{pane_id}"+sep+
-			"#{pane_current_command}"+sep+"#{?pane_active,1,0}"+sep+"#{pane_title}")
+			"#{pane_current_command}"+sep+"#{?pane_active,1,0}"+sep+"#{pane_pid}"+sep+"#{pane_title}")
 	if err != nil {
 		return nil, err
 	}
 	var ps []Pane
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-		p := strings.SplitN(line, sep, 7)
-		if len(p) != 7 {
+		p := strings.SplitN(line, sep, 8)
+		if len(p) != 8 {
 			continue
 		}
 		widx, _ := strconv.Atoi(p[1])
 		pidx, _ := strconv.Atoi(p[2])
+		ppid, _ := strconv.Atoi(p[6])
 		ps = append(ps, Pane{
 			Session: p[0], Window: widx, Index: pidx,
-			ID: p[3], Command: p[4], Active: p[5] == "1", Title: p[6],
+			ID: p[3], Command: p[4], Active: p[5] == "1", PID: ppid, Title: p[7],
 		})
 	}
 	return ps, nil

@@ -10,8 +10,8 @@ import (
 	"github.com/angles-n-daemons/bmux/modal"
 )
 
-// Nerd-font glyphs per foreground command; Claude panes are detected via
-// their title marker instead and get ✳ in Anthropic clay.
+// Nerd-font glyphs per foreground command; agent panes are detected via their
+// process tree instead and get their own marks (✳ clay Claude, ✦ green Codex).
 // Written as \u escapes: literal PUA glyphs don't survive all tooling.
 const (
 	iconShell  = "" // nf-dev-terminal
@@ -63,13 +63,14 @@ var (
 )
 
 // paneGlyph returns the icon (plain glyph), display name, the accent style for
-// agent panes, and whether this pane is a coding agent (Claude or Codex).
-func paneGlyph(p Pane) (icon, name string, accent lipgloss.Style, isAgent bool) {
-	switch kind, n := agentOf(p); kind {
+// agent panes, and whether this pane is a coding agent (Claude or Codex). The
+// agent kind comes from the snapshot's process-tree detection, not the title.
+func (m model) paneGlyph(p Pane) (icon, name string, accent lipgloss.Style, isAgent bool) {
+	switch m.snap.AgentKindByPane[p.ID] {
 	case agentClaude:
-		return iconClaude, n, styleClaude, true
+		return iconClaude, agentDisplayName(agentClaude, p.Title), styleClaude, true
 	case agentCodex:
-		return iconCodex, n, styleCodex, true
+		return iconCodex, agentDisplayName(agentCodex, p.Title), styleCodex, true
 	}
 	if ic, ok := commandIcons[p.Command]; ok {
 		return ic, p.Command, lipgloss.Style{}, false
@@ -93,9 +94,9 @@ var (
 	// Title-bar status (costs): Anthropic clay, same as the ✳ marks —
 	// it's Claude spend, so it wears Claude's color.
 	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
-	styleFooter   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	stylePrompt   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
-	styleError    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	styleFooter = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	stylePrompt = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	styleError  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 )
 
 func agentBadge(agents []agentStatus) string {
@@ -290,14 +291,14 @@ func (m model) renderRow(r row, selected bool) string {
 		var isAgent bool
 		if r.SinglePane != nil {
 			// A one-pane window IS its pane: render the pane, don't expand.
-			icon, name, accent, isAgent = paneGlyph(*r.SinglePane)
+			icon, name, accent, isAgent = m.paneGlyph(*r.SinglePane)
 			if isAgent {
 				badge = m.paneBadge(r.SinglePane.ID)
 			}
 		} else {
 			icon, name = defaultIcon, r.Win.Name
 			if ap := m.activePaneOf(r.Win.Session, r.Win.Index); ap != nil {
-				icon, _, accent, isAgent = paneGlyph(*ap)
+				icon, _, accent, isAgent = m.paneGlyph(*ap)
 			}
 			if !m.isExpanded(r) {
 				badge = agentBadge(m.windowAgents(r.Win.Session, r.Win.Index))
@@ -320,7 +321,7 @@ func (m model) renderRow(r row, selected bool) string {
 		if r.Pane.Active {
 			mark = "*"
 		}
-		icon, name, accent, isAgent := paneGlyph(*r.Pane)
+		icon, name, accent, isAgent := m.paneGlyph(*r.Pane)
 		badge := ""
 		if isAgent {
 			badge = m.paneBadge(r.Pane.ID)

@@ -145,11 +145,20 @@ set -g @bmux_status_cmd '~/.tmux/scripts/claude-usage.sh'
 Two agents are recognised, each with its own icon (`✳` clay for Claude, `✦`
 green for Codex) and a shared `▶`/`⏸`/`⏹` running/waiting/stopped badge.
 
-**Claude Code** (ported from [tmux-agent-statuses](https://github.com/angles-n-daemons/tmux-agent-statuses)):
-sets pane titles to `✳ <name>` when idle and a braille spinner while working;
-an idle pane whose recent lines show a permission prompt (`❯ Allow` / `❯ Deny`
-/ numbered options) counts as waiting.
+Which agent a pane hosts is decided by walking its **process tree**, not the
+pane title or foreground command. Agents are often launched through a wrapper
+(e.g. `roachdev claude` / `roachdev codex`), so the foreground command is the
+wrapper, and a *working* Codex title (spinner + task) is shaped exactly like a
+working Claude title — neither tells them apart. Whichever of `claude` / `codex`
+runs somewhere under the pane wins.
 
-**Codex** is identified by its foreground command (`codex`) and reports its
-state through the pane title: a leading braille spinner means it's working,
-and the literal `Action Required` means it's blocked on an approval prompt.
+Once the kind is known, status comes from the title/content:
+
+**Claude Code** (ported from [tmux-agent-statuses](https://github.com/angles-n-daemons/tmux-agent-statuses)):
+a braille spinner in the title means working; an idle pane whose recent lines
+show a permission prompt (`❯ Allow` / `❯ Deny` / numbered options) counts as
+waiting.
+
+**Codex** reports its state through the pane title: a leading braille spinner
+means it's working, and the literal `Action Required` means it's blocked on an
+approval prompt.
