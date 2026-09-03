@@ -54,12 +54,12 @@ var commandIcons = map[string]string{
 
 const (
 	iconClaude = "✳" // eight-spoked asterisk (Anthropic clay)
-	iconCodex  = "✦" // four-pointed star (OpenAI green)
+	iconCodex  = "✦" // four-pointed star (OpenAI off-white)
 )
 
 var (
 	styleClaude = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
-	styleCodex  = lipgloss.NewStyle().Foreground(lipgloss.Color("#10a37f"))
+	styleCodex  = lipgloss.NewStyle().Foreground(lipgloss.Color("#c5c5d2"))
 )
 
 // paneGlyph returns the icon (plain glyph), display name, the accent style for

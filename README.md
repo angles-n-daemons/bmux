@@ -20,7 +20,7 @@ Codex) inline.
 
 (Stand-in characters — the real panel renders nerd-font icons: folders for
 repos, chevrons for folds, per-command glyphs for windows and panes, `✳`
-in clay for Claude, and `✦` in green for Codex.)
+in clay for Claude, and `✦` in off-white for Codex.)
 
 - One row per worktree: the main checkout is `main`, linked worktrees drop
   the repo prefix. Bright bold titles have a live session; grayed ones
@@ -143,7 +143,7 @@ set -g @bmux_status_cmd '~/.tmux/scripts/claude-usage.sh'
 ## Agent status detection
 
 Two agents are recognised, each with its own icon (`✳` clay for Claude, `✦`
-green for Codex) and a shared `▶`/`⏸`/`⏹` running/waiting/stopped badge.
+off-white for Codex) and a shared `▶`/`⏸`/`⏹` running/waiting/stopped badge.
 
 Which agent a pane hosts is decided by walking its **process tree**, not the
 pane title or foreground command. Agents are often launched through a wrapper
