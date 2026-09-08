@@ -19,7 +19,9 @@ import (
 //
 // Status, once the kind is known, does come from the title/content:
 //   - Claude: a braille spinner means working; an idle pane whose recent lines
-//     show a permission prompt is "waiting"; otherwise stopped.
+//     show a permission prompt is "waiting"; an idle pane whose footer still
+//     shows a live background shell or sub-agent is "background"; otherwise
+//     stopped.
 //   - Codex: "Action Required" in the title means waiting, a leading braille
 //     spinner means working, otherwise stopped.
 
@@ -27,6 +29,7 @@ type agentStatus int
 
 const (
 	agentStopped agentStatus = iota
+	agentBackground
 	agentWaiting
 	agentRunning
 )
@@ -177,7 +180,34 @@ const brailleSpinners = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠁⠂⠄⠈⠐⠠"
 
 var waitingPattern = regexp.MustCompile(`❯ [0-9]+\.|❯ Allow|❯ Deny|❯ allow`)
 
+// bgShellPattern matches Claude Code's footer shell-count token ("· 2 shells
+// ·"), which is present only while background shells are live.
+var bgShellPattern = regexp.MustCompile(`(^|[ ·])[0-9]+ shells?([ ·]|$)`)
+
 func isSpinner(r rune) bool { return strings.ContainsRune(brailleSpinners, r) }
+
+// claudeHasBackgroundWork reports whether an otherwise-idle Claude pane still
+// has work in flight — a live background shell or background sub-agent — as
+// shown in the status footer. Only the tail is scanned: these tokens live in
+// the persistent footer, so restricting to the last lines avoids matching the
+// same words in stale transcript scrollback.
+func claudeHasBackgroundWork(lines []string) bool {
+	tail := lines
+	if len(tail) > 10 {
+		tail = tail[len(tail)-10:]
+	}
+	for _, line := range tail {
+		if bgShellPattern.MatchString(line) {
+			return true // "· N shells ·"
+		}
+		// A hollow circle leads a live background sub-agent row
+		// ("◯ general-purpose  Writing …"); the filled ⏺ is the foreground.
+		if strings.HasPrefix(strings.TrimSpace(line), "◯ ") {
+			return true
+		}
+	}
+	return false
+}
 
 // claudeTitleName reports whether a pane title carries the Claude Code
 // marker (✳ idle / braille spinner running), returning the agent's display
@@ -224,8 +254,9 @@ func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatu
 				statuses[i] = agentRunning
 				return
 			}
+			lines := strings.Split(capturePane(c.p.ID, 15), "\n")
 			statuses[i] = agentStopped
-			for _, line := range strings.Split(capturePane(c.p.ID, 15), "\n") {
+			for _, line := range lines {
 				if strings.Contains(line, "⏵⏵") {
 					continue // Claude Code statusline hints
 				}
@@ -233,6 +264,11 @@ func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatu
 					statuses[i] = agentWaiting
 					return
 				}
+			}
+			// Idle at the prompt, but a background shell or sub-agent may
+			// still be churning — distinct from fully stopped.
+			if claudeHasBackgroundWork(lines) {
+				statuses[i] = agentBackground
 			}
 		})
 	}

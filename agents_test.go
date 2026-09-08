@@ -72,6 +72,58 @@ func TestCodexStatus(t *testing.T) {
 	}
 }
 
+func TestClaudeHasBackgroundWork(t *testing.T) {
+	// Footer region shapes captured from live Claude panes.
+	withShells := []string{
+		"※ recap: pushing the PR",
+		"❯ ",
+		"  ⏸ manual mode on · 2 shells · ← for agents      100% context used",
+	}
+	oneShell := []string{"  ⏸ manual mode on · 1 shell · ← for agents"}
+	withSubAgent := []string{
+		"  ⏺ main",
+		"  ◯ general-purpose (+1)  Writing report.go   39m 36s · ↓ 473.2k tokens",
+	}
+	idle := []string{
+		"※ recap: all done, CI green",
+		"  ⏸ manual mode on · ? for shortcuts · ← for agents",
+	}
+	// "N shells" mentioned only in stale scrollback (outside the footer tail)
+	// must not count as live background work.
+	staleScrollback := append([]string{
+		"⏺ I launched 3 shells earlier to run the sweep.",
+	}, make([]string, 12)...)
+
+	cases := []struct {
+		name  string
+		lines []string
+		want  bool
+	}{
+		{"two shells", withShells, true},
+		{"one shell", oneShell, true},
+		{"sub-agent", withSubAgent, true},
+		{"idle", idle, false},
+		{"stale scrollback", staleScrollback, false},
+	}
+	for _, c := range cases {
+		if got := claudeHasBackgroundWork(c.lines); got != c.want {
+			t.Errorf("claudeHasBackgroundWork(%s) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestSortAgentStatusesPriority(t *testing.T) {
+	// Running > waiting > background > stopped.
+	s := []agentStatus{agentStopped, agentBackground, agentRunning, agentWaiting}
+	sortAgentStatuses(s)
+	want := []agentStatus{agentRunning, agentWaiting, agentBackground, agentStopped}
+	for i := range want {
+		if s[i] != want[i] {
+			t.Fatalf("sorted = %v, want %v", s, want)
+		}
+	}
+}
+
 func TestAgentDisplayName(t *testing.T) {
 	cases := []struct {
 		kind  agentKind

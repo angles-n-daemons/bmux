@@ -89,7 +89,10 @@ var (
 	styleCursor   = lipgloss.NewStyle().Reverse(true)
 	styleRunning  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	styleWaiting  = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	styleStopped  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	// Background work in flight while the agent itself sits idle — a cooler
+	// "still cooking" hue, between running-green and stopped-grey.
+	styleBackground = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	styleStopped    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	styleTitle    = lipgloss.NewStyle().Bold(true)
 	// Title-bar status (costs): Anthropic clay, same as the ✳ marks —
 	// it's Claude spend, so it wears Claude's color.
@@ -113,6 +116,9 @@ func agentBadge(agents []agentStatus) string {
 	}
 	if n := counts[agentWaiting]; n > 0 {
 		parts = append(parts, styleWaiting.Render(fmt.Sprintf("⏸%d", n)))
+	}
+	if n := counts[agentBackground]; n > 0 {
+		parts = append(parts, styleBackground.Render(fmt.Sprintf("◐%d", n)))
 	}
 	if n := counts[agentStopped]; n > 0 {
 		parts = append(parts, styleStopped.Render(fmt.Sprintf("⏹%d", n)))
@@ -151,6 +157,8 @@ func agentGlyph(s agentStatus) string {
 		return styleRunning.Render("▶")
 	case agentWaiting:
 		return styleWaiting.Render("⏸")
+	case agentBackground:
+		return styleBackground.Render("◐")
 	}
 	return styleStopped.Render("⏹")
 }

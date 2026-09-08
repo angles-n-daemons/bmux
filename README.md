@@ -25,9 +25,10 @@ in clay for Claude, and `✦` in off-white for Codex.)
 - One row per worktree: the main checkout is `main`, linked worktrees drop
   the repo prefix. Bright bold titles have a live session; grayed ones
   don't — press ⏎ and one is created on the spot.
-- `▶2 ⏸1 ⏹3` — Claude Code agents: running / waiting for input / stopped.
-  Collapsed rows show the aggregate; expanded rows hand the indicator down
-  to the individual `✳` panes.
+- `▶2 ⏸1 ◐1 ⏹3` — Claude Code agents: running / waiting for input /
+  idle with background work still in flight / stopped. Collapsed rows show
+  the aggregate; expanded rows hand the indicator down to the individual
+  `✳` panes.
 - The title bar can show a status figure (see `@bmux_status_cmd`).
 - Repos are discovered from live sessions, [roachdev](https://github.com/cockroachlabs/roachdev)
   worktrees (optional), and a persistent registry of every repo that has ever
@@ -157,7 +158,10 @@ Once the kind is known, status comes from the title/content:
 **Claude Code** (ported from [tmux-agent-statuses](https://github.com/angles-n-daemons/tmux-agent-statuses)):
 a braille spinner in the title means working; an idle pane whose recent lines
 show a permission prompt (`❯ Allow` / `❯ Deny` / numbered options) counts as
-waiting.
+waiting. An idle pane whose status footer still shows a live background shell
+(`· N shells ·`) or background sub-agent (a `◯` row) counts as **background** —
+work is still churning even though the agent itself is at the prompt, distinct
+from fully stopped.
 
 **Codex** reports its state through the pane title: a leading braille spinner
 means it's working, and the literal `Action Required` means it's blocked on an
