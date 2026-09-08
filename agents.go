@@ -23,7 +23,8 @@ import (
 //     shows a live background shell or sub-agent is "background"; otherwise
 //     stopped.
 //   - Codex: "Action Required" in the title means waiting, a leading braille
-//     spinner means working, otherwise stopped.
+//     spinner means working; an idle pane whose footer still shows a running
+//     background terminal is "background"; otherwise stopped.
 
 type agentStatus int
 
@@ -184,25 +185,44 @@ var waitingPattern = regexp.MustCompile(`❯ [0-9]+\.|❯ Allow|❯ Deny|❯ all
 // ·"), which is present only while background shells are live.
 var bgShellPattern = regexp.MustCompile(`(^|[ ·])[0-9]+ shells?([ ·]|$)`)
 
+// codexBgPattern matches Codex's footer line shown while a background terminal
+// is still running ("1 background terminal running · /ps to view").
+var codexBgPattern = regexp.MustCompile(`[0-9]+ background terminals? running`)
+
 func isSpinner(r rune) bool { return strings.ContainsRune(brailleSpinners, r) }
+
+// footerTail returns the last few captured lines, where an agent's live status
+// footer sits. Background markers are scanned here rather than over the whole
+// capture so the same words in stale transcript scrollback don't count.
+func footerTail(lines []string) []string {
+	if len(lines) > 10 {
+		return lines[len(lines)-10:]
+	}
+	return lines
+}
 
 // claudeHasBackgroundWork reports whether an otherwise-idle Claude pane still
 // has work in flight — a live background shell or background sub-agent — as
-// shown in the status footer. Only the tail is scanned: these tokens live in
-// the persistent footer, so restricting to the last lines avoids matching the
-// same words in stale transcript scrollback.
+// shown in the status footer.
 func claudeHasBackgroundWork(lines []string) bool {
-	tail := lines
-	if len(tail) > 10 {
-		tail = tail[len(tail)-10:]
-	}
-	for _, line := range tail {
+	for _, line := range footerTail(lines) {
 		if bgShellPattern.MatchString(line) {
 			return true // "· N shells ·"
 		}
 		// A hollow circle leads a live background sub-agent row
 		// ("◯ general-purpose  Writing …"); the filled ⏺ is the foreground.
 		if strings.HasPrefix(strings.TrimSpace(line), "◯ ") {
+			return true
+		}
+	}
+	return false
+}
+
+// codexHasBackgroundWork reports whether an otherwise-idle Codex pane still has
+// a background terminal running, per its status footer.
+func codexHasBackgroundWork(lines []string) bool {
+	for _, line := range footerTail(lines) {
+		if codexBgPattern.MatchString(line) {
 			return true
 		}
 	}
@@ -238,8 +258,9 @@ func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatu
 		}
 	}
 
-	// capture-pane per idle Claude agent is the slow part; run them
-	// concurrently. Codex reports its state via the title, so it's instant.
+	// capture-pane is the slow part; run the candidates concurrently. Codex
+	// reads its running/waiting state from the title (instant) and only needs
+	// a capture when otherwise idle, to spot a lingering background terminal.
 	statuses := make([]agentStatus, len(candidates))
 	var fns []func()
 	for i := range candidates {
@@ -248,6 +269,10 @@ func detectAgents(panes []Pane) (map[string][]agentStatus, map[string]agentStatu
 			c := candidates[i]
 			if c.kind == agentCodex {
 				statuses[i] = codexStatus(c.p)
+				if statuses[i] == agentStopped &&
+					codexHasBackgroundWork(strings.Split(capturePane(c.p.ID, 15), "\n")) {
+					statuses[i] = agentBackground
+				}
 				return
 			}
 			if strings.ContainsAny(c.p.Title, brailleSpinners) {

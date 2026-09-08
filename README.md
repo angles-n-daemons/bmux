@@ -165,4 +165,5 @@ from fully stopped.
 
 **Codex** reports its state through the pane title: a leading braille spinner
 means it's working, and the literal `Action Required` means it's blocked on an
-approval prompt.
+approval prompt. An idle Codex pane whose footer still shows a running
+background terminal (`N background terminal running`) counts as **background**.

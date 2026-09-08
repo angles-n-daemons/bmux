@@ -112,6 +112,42 @@ func TestClaudeHasBackgroundWork(t *testing.T) {
 	}
 }
 
+func TestCodexHasBackgroundWork(t *testing.T) {
+	running := []string{
+		"• It worked. I created and pushed the branch.",
+		"  1 background terminal running · /ps to view · /stop to close",
+		"",
+		"› Ask Codex to do anything",
+		"  gpt-5.6-sol default fast · ~/go/src/roachdev",
+	}
+	plural := []string{"  2 background terminals running · /ps to view · /stop to close"}
+	idle := []string{
+		"• Done.",
+		"› Ask Codex to do anything",
+		"  gpt-5.6-sol default fast · ~/go/src/roachdev",
+	}
+	// A stale mention outside the footer tail must not count.
+	stale := append([]string{
+		"• Earlier I had 1 background terminal running for the sweep.",
+	}, make([]string, 12)...)
+
+	cases := []struct {
+		name  string
+		lines []string
+		want  bool
+	}{
+		{"one terminal", running, true},
+		{"two terminals", plural, true},
+		{"idle", idle, false},
+		{"stale scrollback", stale, false},
+	}
+	for _, c := range cases {
+		if got := codexHasBackgroundWork(c.lines); got != c.want {
+			t.Errorf("codexHasBackgroundWork(%s) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestSortAgentStatusesPriority(t *testing.T) {
 	// Running > waiting > background > stopped.
 	s := []agentStatus{agentStopped, agentBackground, agentRunning, agentWaiting}
