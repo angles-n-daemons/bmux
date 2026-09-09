@@ -35,8 +35,13 @@ type snapshot struct {
 	Panes          map[string][]Pane // keyed by session
 	CurrentSession string
 	// Status is the first line of @bmux_status_cmd's output, shown
-	// right-aligned in the panel title bar (e.g. a cost/usage figure).
+	// right-aligned in the panel title bar in Claude's clay (e.g. a
+	// cost/usage figure).
 	Status string
+	// StatusCodex is the first line of @bmux_status_codex_cmd's output,
+	// shown just left of Status in Codex's off-white — a separate cost/usage
+	// figure for Codex.
+	StatusCodex string
 	// AgentByPane maps pane ids to their coding-agent status (Claude or
 	// Codex), coloring each pane's agent mark by state.
 	AgentByPane map[string]agentStatus
@@ -53,21 +58,26 @@ func gather(discoveredRoots []string) snapshot {
 	var (
 		sessions []Session
 		allPanes []Pane
-		windows  map[string][]Window
-		current  string
-		status   string
+		windows     map[string][]Window
+		current     string
+		status      string
+		statusCodex string
 	)
+	firstLine := func(opt string) string {
+		cmd := userOption(opt, "")
+		if cmd == "" {
+			return ""
+		}
+		out, _ := exec.Command("/bin/sh", "-c", cmd).Output()
+		return strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+	}
 	parallel(
 		func() { sessions, _ = listSessions() },
 		func() { allPanes, _ = listAllPanes() },
 		func() { windows, _ = listAllWindows() },
 		func() { current = currentClientSession() },
-		func() {
-			if cmd := userOption("@bmux_status_cmd", ""); cmd != "" {
-				out, _ := exec.Command("/bin/sh", "-c", cmd).Output()
-				status = strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
-			}
-		},
+		func() { status = firstLine("@bmux_status_cmd") },
+		func() { statusCodex = firstLine("@bmux_status_codex_cmd") },
 	)
 
 	reg := loadRegistry()
@@ -187,6 +197,7 @@ func gather(discoveredRoots []string) snapshot {
 		Panes:           panesBySession,
 		CurrentSession:  current,
 		Status:          status,
+		StatusCodex:     statusCodex,
 		AgentByPane:     agentsByPane,
 		AgentKindByPane: agentKinds,
 	}

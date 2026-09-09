@@ -358,9 +358,25 @@ func (m model) View() string {
 	}
 	lines := make([]string, h)
 	lines[0] = styleTitle.Render(truncate(" bmux", w))
-	if s := m.snap.Status; s != "" {
-		if pad := w - len([]rune(" bmux")) - len([]rune(s)) - 1; pad > 0 {
-			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + styleStatus.Render(s) + " "
+	// Right-aligned cost/usage figures: Codex (off-white) sits just left of
+	// Claude (clay), each wearing its agent's color so they read apart.
+	var segs []string
+	plainLen := 0
+	addStatus := func(text string, style lipgloss.Style) {
+		if text == "" {
+			return
+		}
+		if len(segs) > 0 {
+			plainLen += 2 // "  " gap between figures
+		}
+		segs = append(segs, style.Render(text))
+		plainLen += len([]rune(text))
+	}
+	addStatus(m.snap.StatusCodex, styleCodex)
+	addStatus(m.snap.Status, styleStatus)
+	if len(segs) > 0 {
+		if pad := w - len([]rune(" bmux")) - plainLen - 1; pad > 0 {
+			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + strings.Join(segs, "  ") + " "
 		}
 	}
 
