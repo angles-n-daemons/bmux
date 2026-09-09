@@ -163,12 +163,22 @@ func agentGlyph(s agentStatus) string {
 	return styleStopped.Render("⏹")
 }
 
-// paneBadge returns the trailing indicator for a Claude pane row.
-func (m model) paneBadge(paneID string) string {
-	if s, ok := m.snap.AgentByPane[paneID]; ok {
-		return " " + agentGlyph(s)
+// mutedByStatus tints an agent row's name in a muted version of its status
+// color — the same tone as the indicator glyph, dialed back so the name still
+// reads as text rather than a second badge.
+var mutedByStatus = map[agentStatus]lipgloss.Style{
+	agentRunning:    lipgloss.NewStyle().Foreground(lipgloss.Color("#8fb08a")),
+	agentWaiting:    lipgloss.NewStyle().Foreground(lipgloss.Color("#c58a8a")),
+	agentBackground: lipgloss.NewStyle().Foreground(lipgloss.Color("#7fb0b0")),
+	agentStopped:    lipgloss.NewStyle().Foreground(lipgloss.Color("#9a9a9a")),
+}
+
+// mutedStyle is the muted name tone for an agent's status.
+func mutedStyle(s agentStatus) lipgloss.Style {
+	if st, ok := mutedByStatus[s]; ok {
+		return st
 	}
-	return ""
+	return styleDim
 }
 
 // windowAgents aggregates agent statuses across a window's panes.
@@ -296,12 +306,14 @@ func (m model) renderRow(r row, selected bool) string {
 		}
 		var icon, name, badge string
 		var accent lipgloss.Style
-		var isAgent bool
+		var isAgent, singleAgent bool
+		var paneStatus agentStatus
 		if r.SinglePane != nil {
 			// A one-pane window IS its pane: render the pane, don't expand.
 			icon, name, accent, isAgent = m.paneGlyph(*r.SinglePane)
 			if isAgent {
-				badge = m.paneBadge(r.SinglePane.ID)
+				singleAgent = true
+				paneStatus = m.snap.AgentByPane[r.SinglePane.ID]
 			}
 		} else {
 			icon, name = defaultIcon, r.Win.Name
@@ -316,9 +328,15 @@ func (m model) renderRow(r row, selected bool) string {
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
+		prefix := indent + m.foldMarker(r) + " "
+		if singleAgent {
+			// icon (identity color) → status glyph → muted-tone name.
+			rest := truncate(name+mark, width-len([]rune(prefix))-4)
+			return prefix + accent.Render(icon) + " " + agentGlyph(paneStatus) + " " + mutedStyle(paneStatus).Render(rest)
+		}
 		room := width - lipgloss.Width(badge)
 		if isAgent {
-			prefix := indent + m.foldMarker(r) + " "
+			// Multi-pane collapsed window: aggregate counts stay on the right.
 			rest := truncate(name+mark, room-len([]rune(prefix))-2)
 			return prefix + accent.Render(icon) + " " + rest + badge
 		}
@@ -330,21 +348,18 @@ func (m model) renderRow(r row, selected bool) string {
 			mark = "*"
 		}
 		icon, name, accent, isAgent := m.paneGlyph(*r.Pane)
-		badge := ""
-		if isAgent {
-			badge = m.paneBadge(r.Pane.ID)
-		}
 		// Two-cell gutter (the fold-marker slot) so panes sit one visual
 		// step deeper than their window row.
 		line := plain("  ", icon, " ", name, mark)
 		if selected {
 			return styleCursor.Render(truncate(line, width))
 		}
-		room := width - lipgloss.Width(badge)
 		if isAgent {
 			prefix := indent + "  "
-			rest := truncate(name+mark, room-len([]rune(prefix))-2)
-			return styleDim.Render(prefix) + accent.Render(icon) + " " + styleDim.Render(rest) + badge
+			s := m.snap.AgentByPane[r.Pane.ID]
+			// icon (identity color) → status glyph → muted-tone name.
+			rest := truncate(name+mark, width-len([]rune(prefix))-4)
+			return styleDim.Render(prefix) + accent.Render(icon) + " " + agentGlyph(s) + " " + mutedStyle(s).Render(rest)
 		}
 		return styleDim.Render(truncate(line, width))
 	}

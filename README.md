@@ -10,7 +10,7 @@ Codex) inline.
 ▾ cockroach
   ▾ main [jasonranges]  bdillmann/goodhi…
      ▾ $ roachdev*
-        * Implement Jira ticket CRDB-661 ▶
+        * ▶ Implement Jira ticket CRDB-661
         $ zsh*
   ▸ secondary ▶1  crdb-65148-wait-labels
      mergebase  f0fc9e360
@@ -28,7 +28,8 @@ in clay for Claude, and `✦` in off-white for Codex.)
 - `▶2 ⏸1 ◐1 ⏹3` — Claude Code agents: running / waiting for input /
   idle with background work still in flight / stopped. Collapsed rows show
   the aggregate; expanded rows hand the indicator down to the individual
-  `✳` panes.
+  panes, where it sits right after the agent icon (`✳ ▶ …`) and tints the
+  pane name in the same, muted tone.
 - The title bar can show a status figure (see `@bmux_status_cmd`).
 - Repos are discovered from live sessions, [roachdev](https://github.com/cockroachlabs/roachdev)
   worktrees (optional), and a persistent registry of every repo that has ever
