@@ -52,6 +52,9 @@ func selectBackend() worktreeBackend {
 type roachdevBackend struct{}
 
 func (roachdevBackend) Create(mainRoot, name string) (string, error) {
+	if err := checkNewBranch(mainRoot, name); err != nil {
+		return "", err
+	}
 	args := []string{"wt", "create"}
 	if name != "" {
 		args = append(args, name)
@@ -135,6 +138,9 @@ func (gitBackend) Create(mainRoot, name string) (string, error) {
 			}
 		}
 	}
+	if err := checkNewBranch(mainRoot, name); err != nil {
+		return "", err
+	}
 	dest := filepath.Join(worktreeBaseDir(), repoName+"-"+name)
 	if err := os.MkdirAll(worktreeBaseDir(), 0o755); err != nil {
 		return "", err
@@ -144,6 +150,15 @@ func (gitBackend) Create(mainRoot, name string) (string, error) {
 		return "", commandError("git worktree add", err)
 	}
 	return dest, nil
+}
+
+// checkNewBranch gives the panel a useful error before either backend tries
+// to create a branch with a name that is already taken.
+func checkNewBranch(mainRoot, name string) error {
+	if name != "" && exec.Command("git", "-C", mainRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+name).Run() == nil {
+		return fmt.Errorf("branch %q already exists; choose another name", name)
+	}
+	return nil
 }
 
 func (gitBackend) Remove(mainRoot, path, name string, force bool) error {

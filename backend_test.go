@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,6 +56,29 @@ func TestGitBackendCreateRemove(t *testing.T) {
 	}
 	if wts := repoWorktrees(repo); len(wts) != 1 {
 		t.Fatalf("worktree not removed: %+v", wts)
+	}
+}
+
+func TestCreateReportsExistingBranch(t *testing.T) {
+	repo := initTestRepo(t)
+	t.Setenv("BMUX_WORKTREE_DIR", t.TempDir())
+	if out, err := exec.Command("git", "-C", repo, "branch", "oncall").CombinedOutput(); err != nil {
+		t.Fatalf("create branch: %v\n%s", err, out)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		backend worktreeBackend
+	}{
+		{"roachdev", roachdevBackend{}},
+		{"git", gitBackend{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, err := tc.backend.Create(repo, "oncall")
+			if path != "" || err == nil || !strings.Contains(err.Error(), `branch "oncall" already exists`) {
+				t.Fatalf("Create returned path %q, error %v", path, err)
+			}
+		})
 	}
 }
 
