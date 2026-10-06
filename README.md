@@ -75,7 +75,7 @@ tmux() { if [ $# -eq 0 ]; then ~/go/bin/bmux up; else command tmux "$@"; fi }
 | `bmux` | Run the tree TUI in the current pane (inside tmux) |
 | `bmux toggle` | Open/close the panel **globally**: one live pane that follows you across windows and sessions (state in the `@bmux_open` server option) |
 | `bmux ensure` | Hook target: `join-pane`s the traveling panel into the window the client is looking at (respawns it if the process died). Wire it up: |
-| `bmux up` | Start a detached session for **every** worktree of every known repo, plus a `home` session running the tree full-screen, then attach. Idempotent. |
+| `bmux up` | Start a single `home` session running the tree full-screen, then attach. Worktree sessions start on demand when opened. Idempotent. |
 
 ```tmux
 set-hook -g session-window-changed 'run-shell -b "~/go/bin/bmux ensure"'

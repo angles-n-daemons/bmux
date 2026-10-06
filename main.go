@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -35,7 +34,7 @@ func main() {
 			"  (none)  run the navigator TUI (inside tmux)\n"+
 			"  toggle  open/close the navigator panel (global, follows you)\n"+
 			"  ensure  hook target: move the panel into the current window\n"+
-			"  up      start sessions for all worktrees and attach to the tree\n")
+			"  up      start the navigator session and attach to it\n")
 		os.Exit(2)
 	}
 }
@@ -387,49 +386,10 @@ func correctPanelWidth(panelID string, w int) error {
 	return tmuxRun("resize-pane", "-t", panelID, "-x", strconv.Itoa(w))
 }
 
-// cmdUp boots the full environment: a detached session for every worktree of
-// every known repo, plus a "home" session running the tree full-screen. Then
-// it attaches (or switches) to home. Idempotent.
+// cmdUp boots a single "home" session running the tree full-screen, then
+// attaches (or switches) to it. Worktree sessions are started on demand from
+// the navigator. Existing sessions are left alone. Idempotent.
 func cmdUp() error {
-	backend := selectBackend()
-
-	sessions, _ := listSessions()
-	claimed := map[string]bool{} // worktree paths that already have a session
-	roots := map[string]bool{}
-	var sessionRoots []string
-	for _, s := range sessions {
-		if top := repoToplevel(s.Path); top != "" {
-			claimed[top] = true
-			root := repoMainRoot(top)
-			roots[root] = true
-			sessionRoots = append(sessionRoots, root)
-		}
-	}
-	reg := loadRegistry()
-	reg.upsert(sessionRoots)
-	for _, r := range backend.DiscoverRoots() {
-		roots[r] = true
-	}
-	for _, r := range reg.Repos {
-		roots[r] = true
-	}
-
-	for root := range roots {
-		if repoToplevel(root) == "" {
-			continue
-		}
-		for _, wt := range repoWorktrees(root) {
-			if claimed[wt.Path] {
-				continue
-			}
-			name := uniqueSessionName(filepath.Base(wt.Path))
-			if err := newSession(name, wt.Path); err != nil {
-				return err
-			}
-			claimed[wt.Path] = true
-		}
-	}
-
 	if !hasSession("home") {
 		self, err := os.Executable()
 		if err != nil {
