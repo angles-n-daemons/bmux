@@ -40,7 +40,8 @@ in clay for Claude, and `✦` in off-white for Codex.)
 `prefix + e` opens and closes the panel — it's global, following you across
 windows and sessions. Move with `j`/`k` (or arrows), fold with `l`/`h` (or
 `→`/`←`), and hit `⏎` to jump to what's under the cursor — sessions start
-on demand. `a` creates a worktree, `d` deletes, `?` shows everything else.
+on demand. A left click jumps to (or folds) the row you click; the wheel
+scrolls. `a` creates a worktree, `d` deletes, `?` shows everything else.
 
 ## Install
 
@@ -91,7 +92,8 @@ Quitting the panel with `q` closes it globally.
 
 | Key | Action |
 |---|---|
-| `j` / `k` or `↓` / `↑` | move |
+| `j` / `k` or `↓` / `↑` | move (mouse wheel scrolls too) |
+| left click | select the row under the pointer and act on it (jump, or fold a repo) |
 | `⏎` | jump to session (creating it first if the worktree has none); on window/pane rows, jump straight there |
 | `l` / `h` or `→` / `←` | expand / collapse (sessions expand into windows, windows into panes); `h` on a folded row jumps to its parent |
 | `a` | create a worktree in the repo under the cursor (empty name = auto-generated), on a new branch named after it, with a session, and jump to it |

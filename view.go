@@ -93,7 +93,7 @@ var (
 	// "still cooking" hue, between running-green and stopped-grey.
 	styleBackground = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 	styleStopped    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	styleTitle    = lipgloss.NewStyle().Bold(true)
+	styleTitle      = lipgloss.NewStyle().Bold(true)
 	// Title-bar status (costs): Anthropic clay, same as the ✳ marks —
 	// it's Claude spend, so it wears Claude's color.
 	styleStatus = lipgloss.NewStyle().Foreground(lipgloss.Color("#d97757"))
@@ -395,15 +395,10 @@ func (m model) View() string {
 		}
 	}
 
-	// keep the cursor inside the viewport
+	// keep the cursor inside the viewport (see scrollOffset — click mapping
+	// depends on this staying identical)
 	visible := h - 2 // title + footer
-	offset := m.offset
-	if m.cursor < offset {
-		offset = m.cursor
-	}
-	if m.cursor >= offset+visible {
-		offset = m.cursor - visible + 1
-	}
+	offset := m.scrollOffset()
 	for i := 0; i < visible && offset+i < len(m.rows); i++ {
 		lines[1+i] = m.renderRow(m.rows[offset+i], offset+i == m.cursor && m.mode == modeNormal)
 	}

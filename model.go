@@ -178,6 +178,71 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.updateNormal(msg)
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
+	}
+	return m, nil
+}
+
+// scrollOffset is the index of the first row rendered, replicating the
+// cursor-keeping logic in View so a click's screen Y maps to the right row.
+// m.offset is never persisted; View recomputes it each frame from the cursor.
+func (m model) scrollOffset() int {
+	h := m.height
+	if h < 4 {
+		h = 4
+	}
+	visible := h - 2 // title + footer
+	offset := m.offset
+	if m.cursor < offset {
+		offset = m.cursor
+	}
+	if m.cursor >= offset+visible {
+		offset = m.cursor - visible + 1
+	}
+	return offset
+}
+
+// updateMouse maps tmux mouse events onto the tree: wheel scrolls the cursor,
+// a left click jumps to (or expands) the row under the pointer.
+func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if m.mode != modeNormal {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.pendingCursorKey = ""
+			m.saveUI()
+		}
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		if m.cursor < len(m.rows)-1 {
+			m.cursor++
+			m.pendingCursorKey = ""
+			m.saveUI()
+		}
+		return m, nil
+	case tea.MouseButtonLeft:
+		if msg.Action != tea.MouseActionPress {
+			return m, nil
+		}
+		h := m.height
+		if h < 4 {
+			h = 4
+		}
+		// Rows occupy screen lines 1..h-2 (line 0 is the title, h-1 the footer).
+		if msg.Y < 1 || msg.Y > h-2 {
+			return m, nil
+		}
+		idx := m.scrollOffset() + msg.Y - 1
+		if idx < 0 || idx >= len(m.rows) {
+			return m, nil
+		}
+		m.cursor = idx
+		m.pendingCursorKey = ""
+		return m.enterRow()
 	}
 	return m, nil
 }

@@ -52,7 +52,7 @@ func runTUI() {
 	}
 	stylePane()
 	defer unstylePane()
-	p := tea.NewProgram(newModel(selectBackend()), tea.WithAltScreen())
+	p := tea.NewProgram(newModel(selectBackend()), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	// Quitting the traveling panel with q closes it globally; otherwise the
 	// window-change hooks would resurrect it on the next switch.
