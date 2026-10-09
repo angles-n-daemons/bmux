@@ -63,6 +63,8 @@ const (
 type (
 	tickMsg       struct{}
 	dataMsg       struct{ snap snapshot }
+	statusTickMsg struct{}
+	statusMsg     struct{ claude, codex string }
 	discoverMsg   struct{ roots []string }
 	actionDoneMsg struct {
 		err    error
@@ -75,8 +77,17 @@ type model struct {
 	// roots found by backend discovery (slow); resolved once at startup.
 	discoveredRoots []string
 
-	snap   snapshot
-	rows   []row
+	snap snapshot
+	rows []row
+	// refreshing is set while a tree refresh is in flight so ticks don't
+	// stack overlapping ones.
+	refreshing bool
+
+	// status / statusCodex are the first lines of @bmux_status_cmd and
+	// @bmux_status_codex_cmd, shown right-aligned in the title bar (Claude
+	// in clay, Codex in off-white). Refreshed on their own slower cadence.
+	status, statusCodex string
+
 	cursor int
 	offset int
 	// pendingCursorKey is the persisted cursor row from the previous run,
@@ -123,11 +134,22 @@ func (m model) saveUI() {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.refreshCmd(), m.discoverCmd(), tickCmd())
+	return tea.Batch(m.refreshCmd(), m.discoverCmd(), tickCmd(), statusCmd())
 }
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return tickMsg{} })
+}
+
+func statusTickCmd() tea.Cmd {
+	return tea.Tick(statusInterval, func(time.Time) tea.Msg { return statusTickMsg{} })
+}
+
+func statusCmd() tea.Cmd {
+	return func() tea.Msg {
+		claude, codex := runStatusCmds()
+		return statusMsg{claude: claude, codex: codex}
+	}
 }
 
 func (m model) refreshCmd() tea.Cmd {
@@ -146,14 +168,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tickMsg:
-		if m.mode == modeBusy {
-			return m, tickCmd() // don't rebuild under a running action
+		if m.mode == modeBusy || m.refreshing {
+			return m, tickCmd() // don't rebuild under a running action or refresh
 		}
+		m.refreshing = true
 		return m, tea.Batch(m.refreshCmd(), tickCmd())
 	case dataMsg:
+		m.refreshing = false
 		m.snap = msg.snap
 		m.rebuildRows()
 		return m, nil
+	case statusTickMsg:
+		return m, statusCmd()
+	case statusMsg:
+		// Re-armed only once a run finishes, so runs never overlap.
+		m.status, m.statusCodex = msg.claude, msg.codex
+		return m, statusTickCmd()
 	case discoverMsg:
 		m.discoveredRoots = msg.roots
 		return m, m.refreshCmd()

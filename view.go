@@ -5,9 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/angles-n-daemons/bmux/modal"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Nerd-font glyphs per foreground command; agent panes are detected via their
@@ -387,8 +386,8 @@ func (m model) View() string {
 		segs = append(segs, style.Render(text))
 		plainLen += len([]rune(text))
 	}
-	addStatus(m.snap.StatusCodex, styleCodex)
-	addStatus(m.snap.Status, styleStatus)
+	addStatus(m.statusCodex, styleCodex)
+	addStatus(m.status, styleStatus)
 	if len(segs) > 0 {
 		if pad := w - len([]rune(" bmux")) - plainLen - 1; pad > 0 {
 			lines[0] = styleTitle.Render(" bmux") + strings.Repeat(" ", pad) + strings.Join(segs, "  ") + " "
